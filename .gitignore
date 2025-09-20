@@ -27,6 +27,8 @@ dist-ssr
 recording_*
 .crush/
 
+# TO_DO folder (temporary files, models, documentation)
+TO_DO/
+
 # PII Redaction Models (large files)
-TO_DO/onnx_models/
 *.onnx
