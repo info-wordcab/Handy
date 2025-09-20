@@ -26,3 +26,7 @@ dist-ssr
 /target/
 recording_*
 .crush/
+
+# PII Redaction Models (large files)
+TO_DO/onnx_models/
+*.onnx

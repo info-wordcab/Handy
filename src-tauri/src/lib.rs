@@ -5,6 +5,7 @@ mod clipboard;
 mod commands;
 mod managers;
 mod overlay;
+mod pii_redactor;
 mod settings;
 mod shortcut;
 mod tray;
@@ -14,6 +15,7 @@ use managers::audio::AudioRecordingManager;
 use managers::history::HistoryManager;
 use managers::model::ModelManager;
 use managers::transcription::TranscriptionManager;
+use pii_redactor::PIIRedactor;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::image::Image;
@@ -164,12 +166,16 @@ pub fn run() {
             );
             let history_manager =
                 Arc::new(HistoryManager::new(&app).expect("Failed to initialize history manager"));
+            let pii_redactor = Arc::new(
+                PIIRedactor::new(&app.handle()).expect("Failed to initialize PII redactor"),
+            );
 
             // Add managers to Tauri's managed state
             app.manage(recording_manager.clone());
             app.manage(model_manager.clone());
             app.manage(transcription_manager.clone());
             app.manage(history_manager.clone());
+            app.manage(pii_redactor.clone());
 
             // Create the recording overlay window (hidden by default)
             utils::create_recording_overlay(&app.handle());
@@ -242,7 +248,16 @@ pub fn run() {
             commands::history::get_history_entries,
             commands::history::toggle_history_entry_saved,
             commands::history::get_audio_file_path,
-            commands::history::delete_history_entry
+            commands::history::delete_history_entry,
+            commands::pii::get_pii_redaction_enabled,
+            commands::pii::set_pii_redaction_enabled,
+            commands::pii::get_pii_entities,
+            commands::pii::set_pii_entities,
+            commands::pii::get_default_pii_entities,
+            commands::pii::is_pii_model_loaded,
+            commands::pii::load_pii_model,
+            commands::pii::unload_pii_model,
+            commands::pii::test_pii_redaction
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -50,6 +50,14 @@ export const SettingsSchema = z.object({
   custom_words: z.array(z.string()).optional().default([]),
   model_unload_timeout: ModelUnloadTimeoutSchema.optional().default("never"),
   word_correction_threshold: z.number().optional().default(0.18),
+  pii_redaction_enabled: z.boolean().optional().default(false),
+  pii_entities: z.array(z.string()).optional().default([
+    "person",
+    "email",
+    "phone_number",
+    "social_security_number",
+    "credit_card",
+  ]),
 });
 
 export const BindingResponseSchema = z.object({

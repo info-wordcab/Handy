@@ -4,6 +4,7 @@ import { TranslateToEnglish } from "./TranslateToEnglish";
 import { ModelUnloadTimeoutSetting } from "./ModelUnloadTimeout";
 import { CustomWords } from "./CustomWords";
 import { AlwaysOnMicrophone } from "./AlwaysOnMicrophone";
+import { PIIRedaction } from "./PIIRedaction";
 import { SettingsGroup } from "../ui/SettingsGroup";
 import { StartHidden } from "./StartHidden";
 
@@ -16,6 +17,7 @@ export const AdvancedSettings: React.FC = () => {
         <TranslateToEnglish descriptionMode="tooltip" grouped={true} />
         <ModelUnloadTimeoutSetting descriptionMode="tooltip" grouped={true} />
         <CustomWords descriptionMode="tooltip" grouped />
+        <PIIRedaction descriptionMode="tooltip" grouped={true} />
         <AlwaysOnMicrophone descriptionMode="tooltip" grouped={true} />
       </SettingsGroup>
     </div>

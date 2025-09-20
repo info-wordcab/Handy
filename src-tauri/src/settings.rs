@@ -93,6 +93,10 @@ pub struct AppSettings {
     pub model_unload_timeout: ModelUnloadTimeout,
     #[serde(default = "default_word_correction_threshold")]
     pub word_correction_threshold: f64,
+    #[serde(default = "default_pii_redaction_enabled")]
+    pub pii_redaction_enabled: bool,
+    #[serde(default = "default_pii_entities")]
+    pub pii_entities: Vec<String>,
 }
 
 fn default_model() -> String {
@@ -125,6 +129,20 @@ fn default_debug_mode() -> bool {
 
 fn default_word_correction_threshold() -> f64 {
     0.18
+}
+
+fn default_pii_redaction_enabled() -> bool {
+    false
+}
+
+fn default_pii_entities() -> Vec<String> {
+    vec![
+        "person".to_string(),
+        "email".to_string(),
+        "phone_number".to_string(),
+        "social_security_number".to_string(),
+        "credit_card".to_string(),
+    ]
 }
 
 pub const SETTINGS_STORE_PATH: &str = "settings_store.json";
@@ -167,6 +185,8 @@ pub fn get_default_settings() -> AppSettings {
         custom_words: Vec::new(),
         model_unload_timeout: ModelUnloadTimeout::Never,
         word_correction_threshold: default_word_correction_threshold(),
+        pii_redaction_enabled: default_pii_redaction_enabled(),
+        pii_entities: default_pii_entities(),
     }
 }
 

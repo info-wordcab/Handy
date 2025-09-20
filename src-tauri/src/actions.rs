@@ -3,6 +3,7 @@ use crate::managers::audio::AudioRecordingManager;
 use crate::managers::history::HistoryManager;
 use crate::managers::transcription::TranscriptionManager;
 use crate::overlay::{show_recording_overlay, show_transcribing_overlay};
+use crate::pii_redactor::PIIRedactor;
 use crate::settings::get_settings;
 use crate::tray::{change_tray_icon, TrayIconState};
 use crate::utils;
@@ -78,6 +79,7 @@ impl ShortcutAction for TranscribeAction {
         let rm = Arc::clone(&app.state::<Arc<AudioRecordingManager>>());
         let tm = Arc::clone(&app.state::<Arc<TranscriptionManager>>());
         let hm = Arc::clone(&app.state::<Arc<HistoryManager>>());
+        let pr = Arc::clone(&app.state::<Arc<PIIRedactor>>());
 
         change_tray_icon(app, TrayIconState::Transcribing);
         show_transcribing_overlay(app);
@@ -112,7 +114,24 @@ impl ShortcutAction for TranscribeAction {
                             transcription
                         );
                         if !transcription.is_empty() {
-                            // Save to history
+                            // Apply PII redaction if enabled
+                            let settings = get_settings(&ah);
+                            let final_text = if settings.pii_redaction_enabled {
+                                match pr.redact_text(&transcription, &settings.pii_entities) {
+                                    Ok(redacted) => {
+                                        debug!("PII redaction applied successfully");
+                                        redacted
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to apply PII redaction: {}", e);
+                                        transcription.clone()
+                                    }
+                                }
+                            } else {
+                                transcription.clone()
+                            };
+
+                            // Save original transcription to history (unredacted)
                             let hm_clone = Arc::clone(&hm);
                             let transcription_for_history = transcription.clone();
                             tauri::async_runtime::spawn(async move {
@@ -123,11 +142,11 @@ impl ShortcutAction for TranscribeAction {
                                     error!("Failed to save transcription to history: {}", e);
                                 }
                             });
-                            let transcription_clone = transcription.clone();
+                            let final_text_clone = final_text.clone();
                             let ah_clone = ah.clone();
                             let paste_time = Instant::now();
                             ah.run_on_main_thread(move || {
-                                match utils::paste(transcription_clone, ah_clone.clone()) {
+                                match utils::paste(final_text_clone, ah_clone.clone()) {
                                     Ok(()) => debug!(
                                         "Text pasted successfully in {:?}",
                                         paste_time.elapsed()
