@@ -6,6 +6,9 @@ use gliner::model::{
     GLiNER,
 };
 use gliner::orp::params::RuntimeParameters;
+use gliner::execution_providers::{CPUExecutionProvider};
+#[cfg(feature = "cuda")]
+use gliner::execution_providers::CUDAExecutionProvider;
 use log::debug;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -90,10 +93,22 @@ impl PIIRedactor {
             ));
         }
 
-        // Use default runtime parameters (CPU execution provider)
-        let runtime_params = RuntimeParameters::default();
-
-        debug!("Loading GLiNER model with default execution provider");
+        // Configure runtime parameters with CUDA if available, CPU fallback
+        let runtime_params = {
+            #[cfg(feature = "cuda")]
+            {
+                debug!("Attempting to use CUDA execution provider with CPU fallback");
+                RuntimeParameters::default().with_execution_providers([
+                    CUDAExecutionProvider::default().build(),
+                    CPUExecutionProvider::default().build(), // Fallback to CPU
+                ])
+            }
+            #[cfg(not(feature = "cuda"))]
+            {
+                debug!("Using CPU execution provider (CUDA not available)");
+                RuntimeParameters::default()
+            }
+        };
 
         // Load the model
         let model = GLiNER::<SpanMode>::new(
