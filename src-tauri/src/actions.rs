@@ -118,7 +118,7 @@ impl ShortcutAction for TranscribeAction {
                             let settings = get_settings(&ah);
                             let final_text = if settings.pii_redaction_enabled {
                                 debug!("Attempting PII redaction on text: '{}'", transcription);
-                                match pr.redact_text(&transcription, &settings.pii_entities) {
+                                match pr.redact_text(&transcription, &settings.pii_entities, settings.show_pii_entity_labels) {
                                     Ok(redacted) => {
                                         debug!("PII redaction successful. Original: '{}' -> Redacted: '{}'", transcription, redacted);
 
