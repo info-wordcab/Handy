@@ -138,10 +138,9 @@ fn default_pii_redaction_enabled() -> bool {
 fn default_pii_entities() -> Vec<String> {
     vec![
         "person".to_string(),
-        "email".to_string(),
-        "phone_number".to_string(),
+        "phone".to_string(),
+        "address".to_string(),
         "social_security_number".to_string(),
-        "credit_card".to_string(),
     ]
 }
 
