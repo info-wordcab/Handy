@@ -254,6 +254,8 @@ pub fn run() {
             commands::pii::get_pii_entities,
             commands::pii::set_pii_entities,
             commands::pii::get_default_pii_entities,
+            commands::pii::get_show_pii_entity_labels,
+            commands::pii::set_show_pii_entity_labels,
             commands::pii::is_pii_model_loaded,
             commands::pii::load_pii_model,
             commands::pii::unload_pii_model,

@@ -97,6 +97,8 @@ pub struct AppSettings {
     pub pii_redaction_enabled: bool,
     #[serde(default = "default_pii_entities")]
     pub pii_entities: Vec<String>,
+    #[serde(default = "default_show_pii_entity_labels")]
+    pub show_pii_entity_labels: bool,
 }
 
 fn default_model() -> String {
@@ -144,6 +146,10 @@ fn default_pii_entities() -> Vec<String> {
     ]
 }
 
+fn default_show_pii_entity_labels() -> bool {
+    false
+}
+
 pub const SETTINGS_STORE_PATH: &str = "settings_store.json";
 
 pub fn get_default_settings() -> AppSettings {
@@ -186,6 +192,7 @@ pub fn get_default_settings() -> AppSettings {
         word_correction_threshold: default_word_correction_threshold(),
         pii_redaction_enabled: default_pii_redaction_enabled(),
         pii_entities: default_pii_entities(),
+        show_pii_entity_labels: default_show_pii_entity_labels(),
     }
 }
 

@@ -57,10 +57,24 @@ pub fn unload_pii_model(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn get_show_pii_entity_labels(app: AppHandle) -> bool {
+    let settings = get_settings(&app);
+    settings.show_pii_entity_labels
+}
+
+#[tauri::command]
+pub fn set_show_pii_entity_labels(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut settings = get_settings(&app);
+    settings.show_pii_entity_labels = enabled;
+    write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn test_pii_redaction(app: AppHandle, text: String) -> Result<String, String> {
     let settings = get_settings(&app);
     let pii_redactor = app.state::<Arc<PIIRedactor>>();
 
-    pii_redactor.redact_text(&text, &settings.pii_entities)
+    pii_redactor.redact_text(&text, &settings.pii_entities, settings.show_pii_entity_labels)
         .map_err(|e| format!("Failed to redact PII: {}", e))
 }

@@ -58,6 +58,7 @@ export const SettingsSchema = z.object({
     "social_security_number",
     "credit_card",
   ]),
+  show_pii_entity_labels: z.boolean().optional().default(false),
 });
 
 export const BindingResponseSchema = z.object({

@@ -80,11 +80,13 @@ export const useSettingsStore = create<SettingsStore>()(
         const settings = (await store.get("settings")) as Settings;
 
         // Load additional settings that come from invoke calls
-        const [microphoneMode, selectedMicrophone, selectedOutputDevice] =
+        const [microphoneMode, selectedMicrophone, selectedOutputDevice, piiEntities, showPiiEntityLabels] =
           await Promise.allSettled([
             invoke("get_microphone_mode"),
             invoke("get_selected_microphone"),
             invoke("get_selected_output_device"),
+            invoke("get_pii_entities"),
+            invoke("get_show_pii_entity_labels"),
           ]);
 
         // Merge all settings
@@ -102,6 +104,14 @@ export const useSettingsStore = create<SettingsStore>()(
             selectedOutputDevice.status === "fulfilled"
               ? (selectedOutputDevice.value as string)
               : "Default",
+          pii_entities:
+            piiEntities.status === "fulfilled"
+              ? (piiEntities.value as string[])
+              : ["person", "email", "phone_number", "social_security_number", "credit_card"],
+          show_pii_entity_labels:
+            showPiiEntityLabels.status === "fulfilled"
+              ? (showPiiEntityLabels.value as boolean)
+              : false,
         };
 
         set({ settings: mergedSettings, isLoading: false });
@@ -194,6 +204,15 @@ export const useSettingsStore = create<SettingsStore>()(
             break;
           case "word_correction_threshold":
             await invoke("change_word_correction_threshold_setting", { threshold: value });
+            break;
+          case "pii_redaction_enabled":
+            await invoke("set_pii_redaction_enabled", { enabled: value });
+            break;
+          case "pii_entities":
+            await invoke("set_pii_entities", { entities: value });
+            break;
+          case "show_pii_entity_labels":
+            await invoke("set_show_pii_entity_labels", { enabled: value });
             break;
           case "bindings":
           case "selected_model":

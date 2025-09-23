@@ -6,18 +6,6 @@
 echo "Starting Handy with PII Redaction support..."
 echo ""
 
-# Check if models exist
-if [ ! -f "TO_DO/onnx_models/gliner_multitask_large_v0_5/model_int8.onnx" ]; then
-    echo "⚠️  GLiNER model not found!"
-    echo "Please ensure model files are at:"
-    echo "  - TO_DO/onnx_models/gliner_multitask_large_v0_5/model_int8.onnx"
-    echo "  - TO_DO/onnx_models/gliner_multitask_large_v0_5/tokenizer.json"
-    exit 1
-fi
-
-echo "✓ GLiNER model found"
-echo ""
-
 # Check glslc version
 if command -v glslc &> /dev/null; then
     GLSLC_VERSION=$(glslc --version 2>&1 | head -n1)
@@ -31,8 +19,8 @@ echo "Starting development server with Vulkan support..."
 echo "If you see Vulkan errors, press Ctrl+C and uncomment the alternative command below"
 echo ""
 
-# Primary command with full Vulkan support
-bun run tauri dev
+# Primary command with full Vulkan support and debug logging
+RUST_LOG=debug bun run tauri dev
 
 # Alternative commands if the above fails:
 

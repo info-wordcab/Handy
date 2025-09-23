@@ -1,6 +1,7 @@
 use crate::audio_toolkit::apply_custom_words;
 use crate::managers::model::{EngineType, ModelManager};
 use crate::settings::{get_settings, ModelUnloadTimeout};
+use crate::pii_redactor::PIIRedactor;
 use anyhow::Result;
 use log::debug;
 use serde::Serialize;
@@ -378,6 +379,24 @@ impl TranscriptionManager {
             result.text
         };
 
+        // Apply PII redaction if enabled
+        let final_result = if settings.pii_redaction_enabled {
+            let pii_redactor = self.app_handle.state::<Arc<PIIRedactor>>();
+            match pii_redactor.redact_text(&corrected_result, &settings.pii_entities, settings.show_pii_entity_labels) {
+                Ok(redacted_text) => {
+                    debug!("PII redaction applied successfully");
+                    redacted_text
+                }
+                Err(e) => {
+                    // Log error but don't fail transcription - return original text
+                    debug!("PII redaction failed: {}, returning original text", e);
+                    corrected_result
+                }
+            }
+        } else {
+            corrected_result
+        };
+
         let et = std::time::Instant::now();
         let translation_note = if settings.translate_to_english {
             " (translated)"
@@ -394,7 +413,7 @@ impl TranscriptionManager {
             }
         }
 
-        Ok(corrected_result.trim().to_string())
+        Ok(final_result.trim().to_string())
     }
 }
 

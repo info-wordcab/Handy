@@ -117,9 +117,18 @@ impl ShortcutAction for TranscribeAction {
                             // Apply PII redaction if enabled
                             let settings = get_settings(&ah);
                             let final_text = if settings.pii_redaction_enabled {
+                                debug!("Attempting PII redaction on text: '{}'", transcription);
                                 match pr.redact_text(&transcription, &settings.pii_entities) {
                                     Ok(redacted) => {
-                                        debug!("PII redaction applied successfully");
+                                        debug!("PII redaction successful. Original: '{}' -> Redacted: '{}'", transcription, redacted);
+
+                                        // Unload model after use to free memory
+                                        pr.unload_model();
+                                        debug!("PII model unloaded to free memory");
+
+                                        // Small delay to let system recover
+                                        std::thread::sleep(std::time::Duration::from_millis(100));
+
                                         redacted
                                     }
                                     Err(e) => {

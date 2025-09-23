@@ -38,9 +38,9 @@ impl PIIRedactor {
 
         // Try multiple possible paths
         let possible_paths = vec![
-            current_dir.join("TO_DO/onnx_models/gliner_small_v2_1"),
-            current_dir.join("../TO_DO/onnx_models/gliner_small_v2_1"),
-            PathBuf::from("/home/aleks/PycharmProjects/pii_oss/Handy/TO_DO/onnx_models/gliner_small_v2_1"),
+            current_dir.join("TO_DO/onnx_models/gliner_pii_small"),
+            current_dir.join("../TO_DO/onnx_models/gliner_pii_small"),
+            PathBuf::from("/home/aleks/PycharmProjects/pii_oss/Handy/TO_DO/onnx_models/gliner_pii_small"),
         ];
 
         let model_base = possible_paths.into_iter()
@@ -51,7 +51,7 @@ impl PIIRedactor {
             })
             .unwrap_or_else(|| {
                 debug!("No valid model path found, using default");
-                current_dir.join("TO_DO/onnx_models/gliner_small_v2_1")
+                current_dir.join("TO_DO/onnx_models/gliner_pii_small")
             });
 
         let tokenizer_path = model_base.join("tokenizer.json");
@@ -97,15 +97,17 @@ impl PIIRedactor {
         let runtime_params = {
             #[cfg(feature = "cuda")]
             {
-                debug!("Attempting to use CUDA execution provider with CPU fallback");
-                RuntimeParameters::default().with_execution_providers([
+                debug!("PII Model: Attempting to use CUDA execution provider with CPU fallback");
+                let providers = [
                     CUDAExecutionProvider::default().build(),
                     CPUExecutionProvider::default().build(), // Fallback to CPU
-                ])
+                ];
+                debug!("PII Model: Configured execution providers: CUDA (primary), CPU (fallback)");
+                RuntimeParameters::default().with_execution_providers(providers)
             }
             #[cfg(not(feature = "cuda"))]
             {
-                debug!("Using CPU execution provider (CUDA not available)");
+                debug!("PII Model: Using CPU execution provider (CUDA feature not enabled)");
                 RuntimeParameters::default()
             }
         };
@@ -116,10 +118,23 @@ impl PIIRedactor {
             runtime_params,
             self.tokenizer_path.to_str().unwrap(),
             self.model_path.to_str().unwrap(),
-        ).map_err(|e| anyhow::anyhow!("Failed to load GLiNER model: {:?}", e))?;
+        ).map_err(|e| {
+            debug!("PII Model: Failed to load with error: {:?}", e);
+            let error_str = format!("{:?}", e);
+            if error_str.contains("CUDA") || error_str.contains("cuda") {
+                debug!("PII Model: CUDA error detected - falling back to CPU");
+            }
+            anyhow::anyhow!("Failed to load GLiNER model: {:?}", e)
+        })?;
 
         *model_guard = Some(model);
-        debug!("PII redaction model loaded successfully");
+        debug!("PII Model: Successfully loaded and ready for inference");
+
+        #[cfg(feature = "cuda")]
+        debug!("PII Model: If CUDA was available and working, it will be used for inference. CPU fallback is automatic if CUDA fails.");
+
+        #[cfg(not(feature = "cuda"))]
+        debug!("PII Model: Running on CPU (CUDA support not compiled in)");
 
         Ok(())
     }
@@ -140,7 +155,7 @@ impl PIIRedactor {
     }
 
     /// Redact PII from text
-    pub fn redact_text(&self, text: &str, entities_to_redact: &[String]) -> Result<String> {
+    pub fn redact_text(&self, text: &str, entities_to_redact: &[String], show_entity_labels: bool) -> Result<String> {
         // Ensure model is loaded
         if !self.is_model_loaded() {
             self.load_model()?;
@@ -159,10 +174,33 @@ impl PIIRedactor {
         // Debug the input parameters
         debug!("Redacting text: '{}'", text);
         debug!("Entity labels: {:?}", entities_to_redact);
+        debug!("Show entity labels: {}", show_entity_labels);
 
-        // Use the proper entity labels that work best with gliner_small_v2_1
-        let working_labels = vec!["person", "phone", "address", "social_security_number"];
-        debug!("Using working labels: {:?}", working_labels);
+        // Filter entities to only use those supported by the model and selected by user
+        let model_supported_entities = vec!["person", "phone", "address", "social_security_number"];
+        let working_labels: Vec<&str> = entities_to_redact
+            .iter()
+            .filter_map(|entity| {
+                // Map frontend entity names to model entity names
+                let model_entity = match entity.as_str() {
+                    "phone_number" => "phone", // Handle alternate naming
+                    other => other,
+                };
+                if model_supported_entities.contains(&model_entity) {
+                    Some(model_entity)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        debug!("Filtered working labels: {:?}", working_labels);
+
+        // If no valid entities to redact, return original text
+        if working_labels.is_empty() {
+            debug!("No valid entities selected for redaction");
+            return Ok(text.to_string());
+        }
 
         // Create input for GLiNER
         let input = TextInput::from_str(&[text], &working_labels)
@@ -226,8 +264,20 @@ impl PIIRedactor {
                 continue;
             }
 
-            // Create hashtag redaction based on original text length
-            let redaction = "#".repeat(original_text.len());
+            // Create redaction based on settings
+            let redaction = if show_entity_labels {
+                // Use generic entity labels like [PERSON], [PHONE], etc.
+                match entity_type.as_str() {
+                    "person" => "[PERSON]".to_string(),
+                    "phone" => "[PHONE]".to_string(),
+                    "address" => "[ADDRESS]".to_string(),
+                    "social_security_number" => "[SSN]".to_string(),
+                    _ => format!("[{}]", entity_type.to_uppercase()),
+                }
+            } else {
+                // Use hashtag redaction based on original text length
+                "#".repeat(original_text.len())
+            };
             debug!("Redacting '{}' ({}) at {}..{} with '{}'", original_text, entity_type, start, end, redaction);
 
             // Calculate byte positions from current redacted_text
@@ -260,10 +310,10 @@ impl PIIRedactor {
     }
 
     /// Redact multiple texts in batch
-    pub fn redact_texts(&self, texts: &[String], entities_to_redact: &[String]) -> Result<Vec<String>> {
+    pub fn redact_texts(&self, texts: &[String], entities_to_redact: &[String], show_entity_labels: bool) -> Result<Vec<String>> {
         texts
             .iter()
-            .map(|text| self.redact_text(text, entities_to_redact))
+            .map(|text| self.redact_text(text, entities_to_redact, show_entity_labels))
             .collect()
     }
 }
