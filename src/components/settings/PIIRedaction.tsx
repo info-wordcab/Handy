@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useSettings } from "@/hooks/useSettings";
 import { ToggleSwitch } from "@/components/ui/ToggleSwitch";
 import { SettingContainer } from "@/components/ui/SettingContainer";
@@ -12,10 +13,11 @@ interface PIIRedactionProps {
 }
 
 const PII_ENTITY_OPTIONS = [
-  { value: "person", label: "Personal Names", description: "Names of people (e.g., John Smith)" },
-  { value: "phone", label: "Phone Numbers", description: "Phone numbers in any format" },
-  { value: "address", label: "Physical Addresses", description: "Street addresses and locations" },
-  { value: "social_security_number", label: "Social Security Numbers", description: "SSN and similar government IDs" },
+  { value: "personal_identifiers", label: "Personal Identifiers", description: "Names, dates of birth, age, gender, etc." },
+  { value: "contact_information", label: "Contact Information", description: "Email, phone numbers, addresses, URLs, etc." },
+  { value: "financial_information", label: "Financial Information", description: "SSN, account numbers, credit cards, etc." },
+  { value: "healthcare_information", label: "Healthcare Information", description: "Conditions, medical processes, drugs, etc." },
+  { value: "identification_documents", label: "Identification Documents", description: "Passport numbers, licenses, usernames, etc." },
 ];
 
 export const PIIRedaction: React.FC<PIIRedactionProps> = ({
@@ -25,27 +27,46 @@ export const PIIRedaction: React.FC<PIIRedactionProps> = ({
   const { settings, isLoading, updateSetting } = useSettings();
   const [modelLoading, setModelLoading] = useState(false);
   const [isModelLoaded, setIsModelLoaded] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [loadingDots, setLoadingDots] = useState(1);
 
   useEffect(() => {
     checkModelStatus();
   }, []);
 
+  // Animated dots effect for download text
   useEffect(() => {
-    // Load model automatically if PII redaction is enabled at startup
-    if (settings?.pii_redaction_enabled && !isModelLoaded && !modelLoading) {
-      setModelLoading(true);
-      invoke("load_pii_model")
-        .then(() => {
-          setIsModelLoaded(true);
-        })
-        .catch((error) => {
-          console.error("Failed to auto-load PII model:", error);
-        })
-        .finally(() => {
-          setModelLoading(false);
-        });
+    let interval: NodeJS.Timeout;
+    if (isDownloading || modelLoading) {
+      interval = setInterval(() => {
+        setLoadingDots(prev => prev >= 3 ? 1 : prev + 1);
+      }, 500);
     }
-  }, [settings?.pii_redaction_enabled, isModelLoaded, modelLoading]);
+    return () => clearInterval(interval);
+  }, [isDownloading, modelLoading]);
+
+  // Listen for download progress events
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    const setupListener = async () => {
+      unlisten = await listen<{downloaded: number, total: number, percentage: number}>(
+        'pii-model-download-progress',
+        (event) => {
+          setDownloadProgress(event.payload.percentage);
+        }
+      );
+    };
+
+    setupListener();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, []);
 
   const checkModelStatus = async () => {
     try {
@@ -61,14 +82,22 @@ export const PIIRedaction: React.FC<PIIRedactionProps> = ({
     try {
       await updateSetting("pii_redaction_enabled", enabled);
 
-      // Load model if enabling redaction and model not loaded
+      // Download and load model if enabling redaction for the first time
       if (enabled && !isModelLoaded && !modelLoading) {
-        setModelLoading(true);
+        setIsDownloading(true);
+        setDownloadProgress(0);
         try {
+          // First download the model
+          await invoke("download_pii_model");
+
+          // Then load it
+          setIsDownloading(false);
+          setModelLoading(true);
           await invoke("load_pii_model");
           setIsModelLoaded(true);
         } catch (error) {
-          console.error("Failed to load PII model:", error);
+          console.error("Failed to download/load PII model:", error);
+          setIsDownloading(false);
         } finally {
           setModelLoading(false);
         }
@@ -169,7 +198,7 @@ export const PIIRedaction: React.FC<PIIRedactionProps> = ({
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
-                  title="Show generic labels like [PERSON] instead of hashtags when redacting"
+                  title="Replace sensitive information with named labels such as '[NAME]' instead of hashtags like '####'"
                 >
                   <path
                     strokeLinecap="round"
@@ -216,6 +245,26 @@ export const PIIRedaction: React.FC<PIIRedactionProps> = ({
                 ))}
               </div>
             </div>
+
+            {/* Download/Loading Status */}
+            {(isDownloading || modelLoading) && (
+              <div className="flex items-center justify-center mt-4 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 border-2 border-logo-primary border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-sm text-gray-600">
+                    {isDownloading
+                      ? `Download model${'.'.repeat(loadingDots)}`
+                      : `Loading model${'.'.repeat(loadingDots)}`
+                    }
+                  </span>
+                  {isDownloading && downloadProgress > 0 && (
+                    <span className="text-xs text-gray-500">
+                      ({downloadProgress.toFixed(1)}%)
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

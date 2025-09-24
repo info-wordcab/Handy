@@ -64,6 +64,17 @@ export const AboutSettings: React.FC = () => {
             Thanks to the amazing work by Georgi Gerganov and contributors.
           </div>
         </SettingContainer>
+
+        <SettingContainer
+          title="Wordcab-PII"
+          description="Efficient, open source PII, PHI, and PCI detection models."
+          grouped={true}
+          layout="stacked"
+        >
+          <div className="text-sm text-mid-gray">
+            A collection of open source, PII/PHI/PCI redaction models based on the GLiNER architecture, created in collaboration with knowledgator.com.
+          </div>
+        </SettingContainer>
       </SettingsGroup>
     </div>
   );

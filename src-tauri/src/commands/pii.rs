@@ -43,6 +43,13 @@ pub fn is_pii_model_loaded(app: AppHandle) -> bool {
 }
 
 #[tauri::command]
+pub async fn download_pii_model(app: AppHandle) -> Result<(), String> {
+    let pii_redactor = app.state::<Arc<PIIRedactor>>();
+    pii_redactor.download_model().await
+        .map_err(|e| format!("Failed to download PII model: {}", e))
+}
+
+#[tauri::command]
 pub fn load_pii_model(app: AppHandle) -> Result<(), String> {
     let pii_redactor = app.state::<Arc<PIIRedactor>>();
     pii_redactor.load_model()

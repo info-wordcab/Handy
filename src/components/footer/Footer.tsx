@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 
 import ModelSelector from "../model-selector";
-import UpdateChecker from "../update-checker";
 
 const Footer: React.FC = () => {
   const [version, setVersion] = useState("");
@@ -28,10 +27,8 @@ const Footer: React.FC = () => {
           <ModelSelector />
         </div>
 
-        {/* Update Status */}
+        {/* Version */}
         <div className="flex items-center gap-1">
-          <UpdateChecker />
-          <span>•</span>
           <span>v{version}</span>
         </div>
       </div>

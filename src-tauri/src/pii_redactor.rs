@@ -12,14 +12,76 @@ use gliner::execution_providers::CUDAExecutionProvider;
 use log::debug;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::AppHandle;
+use std::fs;
+use tauri::{AppHandle, Emitter};
+use futures_util::StreamExt;
 
-// Default PII entity labels - optimized for gliner_small_v2_1
+// Default PII entity labels - Personal Identifiers category (default checked)
 pub const DEFAULT_PII_ENTITIES: &[&str] = &[
-    "person",
-    "phone",
-    "address",
-    "social_security_number",
+    "name",
+    "first name",
+    "last name",
+    "name medical professional",
+    "dob",
+    "age",
+    "gender",
+    "marital status",
+];
+
+// PII entity categories mapping to exact GLiNER model labels
+pub const PERSONAL_IDENTIFIERS: &[&str] = &[
+    "name",
+    "first name",
+    "last name",
+    "name medical professional",
+    "dob",
+    "age",
+    "gender",
+    "marital status",
+];
+
+pub const CONTACT_INFORMATION: &[&str] = &[
+    "email address",
+    "phone number",
+    "ip address",
+    "url",
+    "location address",
+    "location street",
+    "location city",
+    "location state",
+    "location country",
+    "location zip",
+];
+
+pub const FINANCIAL_INFORMATION: &[&str] = &[
+    "account number",
+    "bank account",
+    "routing number",
+    "credit card",
+    "credit card expiration",
+    "cvv",
+    "ssn",
+    "money",
+];
+
+pub const HEALTHCARE_INFORMATION: &[&str] = &[
+    "condition",
+    "medical process",
+    "drug",
+    "dose",
+    "blood type",
+    "injury",
+    "organization medical facility",
+    "healthcare number",
+    "medical code",
+];
+
+pub const IDENTIFICATION_DOCUMENTS: &[&str] = &[
+    "passport number",
+    "driver license",
+    "username",
+    "password",
+    "vehicle id",
 ];
 
 pub struct PIIRedactor {
@@ -30,33 +92,50 @@ pub struct PIIRedactor {
 }
 
 impl PIIRedactor {
+    /// Map PII category names to their corresponding GLiNER model labels
+    pub fn get_labels_for_category(category: &str) -> &'static [&'static str] {
+        match category {
+            "personal_identifiers" => PERSONAL_IDENTIFIERS,
+            "contact_information" => CONTACT_INFORMATION,
+            "financial_information" => FINANCIAL_INFORMATION,
+            "healthcare_information" => HEALTHCARE_INFORMATION,
+            "identification_documents" => IDENTIFICATION_DOCUMENTS,
+            _ => &[], // Unknown category
+        }
+    }
+
+    /// Get all labels for selected categories
+    pub fn get_labels_for_categories(categories: &[String]) -> Vec<String> {
+        let mut all_labels = Vec::new();
+        for category in categories {
+            let labels = Self::get_labels_for_category(category);
+            for label in labels {
+                if !all_labels.contains(&label.to_string()) {
+                    all_labels.push(label.to_string());
+                }
+            }
+        }
+        all_labels
+    }
+
     pub fn new(app_handle: &AppHandle) -> Result<Self> {
-        // For development, use absolute paths to the model directory
-        // In production, these would be in the app's resource directory
-        let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        debug!("Current working directory: {:?}", current_dir);
+        // Use app data directory for model storage
+        let app_data_dir = app_handle
+            .path()
+            .app_data_dir()
+            .map_err(|e| anyhow::anyhow!("Failed to get app data dir: {}", e))?;
 
-        // Try multiple possible paths
-        let possible_paths = vec![
-            current_dir.join("TO_DO/onnx_models/gliner_pii_small"),
-            current_dir.join("../TO_DO/onnx_models/gliner_pii_small"),
-            PathBuf::from("/home/aleks/PycharmProjects/pii_oss/Handy/TO_DO/onnx_models/gliner_pii_small"),
-        ];
+        let model_base = app_data_dir.join("models").join("pii");
 
-        let model_base = possible_paths.into_iter()
-            .find(|path| {
-                let exists = path.join("tokenizer.json").exists();
-                debug!("Checking path: {:?} - exists: {}", path, exists);
-                exists
-            })
-            .unwrap_or_else(|| {
-                debug!("No valid model path found, using default");
-                current_dir.join("TO_DO/onnx_models/gliner_pii_small")
-            });
+        // Create the directory if it doesn't exist
+        if !model_base.exists() {
+            fs::create_dir_all(&model_base)?;
+        }
 
         let tokenizer_path = model_base.join("tokenizer.json");
-        let model_path = model_base.join("model_int8.onnx");
-        debug!("Selected model base: {:?}", model_base);
+        let model_path = model_base.join("model.onnx");
+
+        debug!("PII model base directory: {:?}", model_base);
         debug!("Tokenizer path: {:?}", tokenizer_path);
         debug!("Model path: {:?}", model_path);
 
@@ -66,6 +145,75 @@ impl PIIRedactor {
             model_path,
             tokenizer_path,
         })
+    }
+
+    /// Download PII model files if they don't exist
+    pub async fn download_model(&self) -> Result<()> {
+        // Check if both files exist
+        if self.tokenizer_path.exists() && self.model_path.exists() {
+            debug!("PII model files already exist, skipping download");
+            return Ok(());
+        }
+
+        debug!("Downloading PII model files...");
+
+        let tokenizer_url = "https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/tokenizer.json";
+        let model_url = "https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/onnx/model.onnx";
+
+        // Download tokenizer
+        if !self.tokenizer_path.exists() {
+            debug!("Downloading tokenizer from: {}", tokenizer_url);
+            self.download_file(tokenizer_url, &self.tokenizer_path).await?;
+        }
+
+        // Download model
+        if !self.model_path.exists() {
+            debug!("Downloading model from: {}", model_url);
+            self.download_file(model_url, &self.model_path).await?;
+        }
+
+        debug!("PII model download completed");
+        Ok(())
+    }
+
+    /// Download a file from URL to local path
+    async fn download_file(&self, url: &str, path: &PathBuf) -> Result<()> {
+        let client = reqwest::Client::new();
+        let response = client.get(url).send().await?;
+
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("Failed to download {}: {}", url, response.status()));
+        }
+
+        let total_size = response.content_length().unwrap_or(0);
+        let mut downloaded = 0u64;
+
+        let mut file = std::fs::File::create(path)?;
+        let mut stream = response.bytes_stream();
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            std::io::Write::write_all(&mut file, &chunk)?;
+            downloaded += chunk.len() as u64;
+
+            if total_size > 0 {
+                let progress = (downloaded as f64 / total_size as f64) * 100.0;
+                if downloaded % (1024 * 1024) == 0 || downloaded == total_size {
+                    debug!("Download progress: {:.1}%", progress);
+
+                    // Emit progress event
+                    let _ = self.app_handle.emit("pii-model-download-progress", serde_json::json!({
+                        "downloaded": downloaded,
+                        "total": total_size,
+                        "percentage": progress
+                    }));
+                }
+            }
+        }
+
+        std::io::Write::flush(&mut file)?;
+        debug!("Downloaded {} bytes to {:?}", downloaded, path);
+        Ok(())
     }
 
     /// Initialize the GLiNER model lazily
@@ -82,13 +230,13 @@ impl PIIRedactor {
         // Check if model files exist
         if !self.tokenizer_path.exists() {
             return Err(anyhow::anyhow!(
-                "GLiNER tokenizer not found at: {:?}",
+                "GLiNER tokenizer not found at: {:?}. Please download the model first.",
                 self.tokenizer_path
             ));
         }
         if !self.model_path.exists() {
             return Err(anyhow::anyhow!(
-                "GLiNER model not found at: {:?}",
+                "GLiNER model not found at: {:?}. Please download the model first.",
                 self.model_path
             ));
         }
@@ -176,34 +324,20 @@ impl PIIRedactor {
         debug!("Entity labels: {:?}", entities_to_redact);
         debug!("Show entity labels: {}", show_entity_labels);
 
-        // Filter entities to only use those supported by the model and selected by user
-        let model_supported_entities = vec!["person", "phone", "address", "social_security_number"];
-        let working_labels: Vec<&str> = entities_to_redact
-            .iter()
-            .filter_map(|entity| {
-                // Map frontend entity names to model entity names
-                let model_entity = match entity.as_str() {
-                    "phone_number" => "phone", // Handle alternate naming
-                    other => other,
-                };
-                if model_supported_entities.contains(&model_entity) {
-                    Some(model_entity)
-                } else {
-                    None
-                }
-            })
-            .collect();
+        // Convert category names to actual GLiNER model labels
+        let working_labels = Self::get_labels_for_categories(entities_to_redact);
+        let working_labels_str: Vec<&str> = working_labels.iter().map(|s| s.as_str()).collect();
 
-        debug!("Filtered working labels: {:?}", working_labels);
+        debug!("Filtered working labels: {:?}", working_labels_str);
 
         // If no valid entities to redact, return original text
-        if working_labels.is_empty() {
+        if working_labels_str.is_empty() {
             debug!("No valid entities selected for redaction");
             return Ok(text.to_string());
         }
 
         // Create input for GLiNER
-        let input = TextInput::from_str(&[text], &working_labels)
+        let input = TextInput::from_str(&[text], &working_labels_str)
             .map_err(|e| anyhow::anyhow!("Failed to create text input: {:?}", e))?;
 
         debug!("Successfully created TextInput, running inference...");
@@ -266,13 +400,56 @@ impl PIIRedactor {
 
             // Create redaction based on settings
             let redaction = if show_entity_labels {
-                // Use generic entity labels like [PERSON], [PHONE], etc.
+                // Use generic entity labels based on GLiNER entity types
                 match entity_type.as_str() {
-                    "person" => "[PERSON]".to_string(),
-                    "phone" => "[PHONE]".to_string(),
-                    "address" => "[ADDRESS]".to_string(),
-                    "social_security_number" => "[SSN]".to_string(),
-                    _ => format!("[{}]", entity_type.to_uppercase()),
+                    // Personal identifiers
+                    "name" | "first name" | "last name" => "[NAME]".to_string(),
+                    "name medical professional" => "[MEDICAL_PROFESSIONAL]".to_string(),
+                    "dob" => "[DATE_OF_BIRTH]".to_string(),
+                    "age" => "[AGE]".to_string(),
+                    "gender" => "[GENDER]".to_string(),
+                    "marital status" => "[MARITAL_STATUS]".to_string(),
+
+                    // Contact information
+                    "email address" => "[EMAIL]".to_string(),
+                    "phone number" => "[PHONE]".to_string(),
+                    "ip address" => "[IP_ADDRESS]".to_string(),
+                    "url" => "[URL]".to_string(),
+                    "location address" | "location street" => "[ADDRESS]".to_string(),
+                    "location city" => "[CITY]".to_string(),
+                    "location state" => "[STATE]".to_string(),
+                    "location country" => "[COUNTRY]".to_string(),
+                    "location zip" => "[ZIP_CODE]".to_string(),
+
+                    // Financial information
+                    "account number" | "bank account" => "[ACCOUNT_NUMBER]".to_string(),
+                    "routing number" => "[ROUTING_NUMBER]".to_string(),
+                    "credit card" => "[CREDIT_CARD]".to_string(),
+                    "credit card expiration" => "[CARD_EXPIRATION]".to_string(),
+                    "cvv" => "[CVV]".to_string(),
+                    "ssn" => "[SSN]".to_string(),
+                    "money" => "[MONETARY_AMOUNT]".to_string(),
+
+                    // Healthcare information
+                    "condition" => "[MEDICAL_CONDITION]".to_string(),
+                    "medical process" => "[MEDICAL_PROCEDURE]".to_string(),
+                    "drug" => "[MEDICATION]".to_string(),
+                    "dose" => "[DOSAGE]".to_string(),
+                    "blood type" => "[BLOOD_TYPE]".to_string(),
+                    "injury" => "[INJURY]".to_string(),
+                    "organization medical facility" => "[MEDICAL_FACILITY]".to_string(),
+                    "healthcare number" => "[HEALTHCARE_NUMBER]".to_string(),
+                    "medical code" => "[MEDICAL_CODE]".to_string(),
+
+                    // Identification documents
+                    "passport number" => "[PASSPORT]".to_string(),
+                    "driver license" => "[DRIVER_LICENSE]".to_string(),
+                    "username" => "[USERNAME]".to_string(),
+                    "password" => "[PASSWORD]".to_string(),
+                    "vehicle id" => "[VEHICLE_ID]".to_string(),
+
+                    // Generic fallback
+                    _ => format!("[{}]", entity_type.to_uppercase().replace(" ", "_")),
                 }
             } else {
                 // Use hashtag redaction based on original text length
