@@ -6,14 +6,14 @@ use gliner::model::{
     GLiNER,
 };
 use gliner::orp::params::RuntimeParameters;
-use gliner::execution_providers::{CPUExecutionProvider};
+use gliner::execution_providers::CPUExecutionProvider;
 #[cfg(feature = "cuda")]
 use gliner::execution_providers::CUDAExecutionProvider;
 use log::debug;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::fs;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use futures_util::StreamExt;
 
 // Default PII entity labels - Personal Identifiers category (default checked)

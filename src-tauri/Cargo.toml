@@ -73,7 +73,7 @@ tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tar = "0.4.44"
 flate2 = "1.0"
 transcribe-rs = { path = "../TO_DO/transcribe-rs" }
-gliner = { path = "../TO_DO/gline-rs", package = "gline-rs" }
+gliner = { git = "https://github.com/info-wordcab/gline-rs.git", branch = "handy-integration", package = "gline-rs" }
 
 [features]
 default = []

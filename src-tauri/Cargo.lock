@@ -2200,6 +2200,7 @@ dependencies = [
 [[package]]
 name = "gline-rs"
 version = "1.0.0"
+source = "git+https://github.com/info-wordcab/gline-rs.git?branch=handy-integration#10f6cde1b667357f3f8f8cbc4340a24ac0c14463"
 dependencies = [
  "composable",
  "csv",
