@@ -6,15 +6,15 @@ use gliner::model::{
     GLiNER,
 };
 use gliner::orp::params::RuntimeParameters;
-use gliner::execution_providers::CPUExecutionProvider;
 #[cfg(feature = "cuda")]
-use gliner::execution_providers::CUDAExecutionProvider;
+use gliner::execution_providers::{CPUExecutionProvider, CUDAExecutionProvider};
+#[cfg(not(feature = "cuda"))]
+use gliner::execution_providers::CPUExecutionProvider;
 use log::debug;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::fs;
-use tauri::{AppHandle, Emitter, Manager};
-use futures_util::StreamExt;
+use tauri::{AppHandle, Manager};
 
 // Default PII entity labels - Personal Identifiers category (default checked)
 pub const DEFAULT_PII_ENTITIES: &[&str] = &[
@@ -133,7 +133,7 @@ impl PIIRedactor {
         }
 
         let tokenizer_path = model_base.join("tokenizer.json");
-        let model_path = model_base.join("model.onnx");
+        let model_path = model_base.join("model_quint8.onnx");
 
         debug!("PII model base directory: {:?}", model_base);
         debug!("Tokenizer path: {:?}", tokenizer_path);
@@ -147,74 +147,6 @@ impl PIIRedactor {
         })
     }
 
-    /// Download PII model files if they don't exist
-    pub async fn download_model(&self) -> Result<()> {
-        // Check if both files exist
-        if self.tokenizer_path.exists() && self.model_path.exists() {
-            debug!("PII model files already exist, skipping download");
-            return Ok(());
-        }
-
-        debug!("Downloading PII model files...");
-
-        let tokenizer_url = "https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/tokenizer.json";
-        let model_url = "https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/onnx/model.onnx";
-
-        // Download tokenizer
-        if !self.tokenizer_path.exists() {
-            debug!("Downloading tokenizer from: {}", tokenizer_url);
-            self.download_file(tokenizer_url, &self.tokenizer_path).await?;
-        }
-
-        // Download model
-        if !self.model_path.exists() {
-            debug!("Downloading model from: {}", model_url);
-            self.download_file(model_url, &self.model_path).await?;
-        }
-
-        debug!("PII model download completed");
-        Ok(())
-    }
-
-    /// Download a file from URL to local path
-    async fn download_file(&self, url: &str, path: &PathBuf) -> Result<()> {
-        let client = reqwest::Client::new();
-        let response = client.get(url).send().await?;
-
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!("Failed to download {}: {}", url, response.status()));
-        }
-
-        let total_size = response.content_length().unwrap_or(0);
-        let mut downloaded = 0u64;
-
-        let mut file = std::fs::File::create(path)?;
-        let mut stream = response.bytes_stream();
-
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            std::io::Write::write_all(&mut file, &chunk)?;
-            downloaded += chunk.len() as u64;
-
-            if total_size > 0 {
-                let progress = (downloaded as f64 / total_size as f64) * 100.0;
-                if downloaded % (1024 * 1024) == 0 || downloaded == total_size {
-                    debug!("Download progress: {:.1}%", progress);
-
-                    // Emit progress event
-                    let _ = self.app_handle.emit("pii-model-download-progress", serde_json::json!({
-                        "downloaded": downloaded,
-                        "total": total_size,
-                        "percentage": progress
-                    }));
-                }
-            }
-        }
-
-        std::io::Write::flush(&mut file)?;
-        debug!("Downloaded {} bytes to {:?}", downloaded, path);
-        Ok(())
-    }
 
     /// Initialize the GLiNER model lazily
     pub fn load_model(&self) -> Result<()> {

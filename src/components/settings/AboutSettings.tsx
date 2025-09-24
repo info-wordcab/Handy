@@ -67,7 +67,7 @@ export const AboutSettings: React.FC = () => {
 
         <SettingContainer
           title="Wordcab-PII"
-          description="Efficient, open source PII, PHI, and PCI detection models."
+          description="Efficient, open source PII, PHI, and PCI detection models"
           grouped={true}
           layout="stacked"
         >

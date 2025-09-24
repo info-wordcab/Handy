@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { useSettings } from "@/hooks/useSettings";
 import { ToggleSwitch } from "@/components/ui/ToggleSwitch";
 import { SettingContainer } from "@/components/ui/SettingContainer";
@@ -27,46 +26,36 @@ export const PIIRedaction: React.FC<PIIRedactionProps> = ({
   const { settings, isLoading, updateSetting } = useSettings();
   const [modelLoading, setModelLoading] = useState(false);
   const [isModelLoaded, setIsModelLoaded] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState(0);
-  const [loadingDots, setLoadingDots] = useState(1);
 
   useEffect(() => {
     checkModelStatus();
   }, []);
 
-  // Animated dots effect for download text
+  // Check if PII is enabled but model is missing - disable it if so
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isDownloading || modelLoading) {
-      interval = setInterval(() => {
-        setLoadingDots(prev => prev >= 3 ? 1 : prev + 1);
-      }, 500);
-    }
-    return () => clearInterval(interval);
-  }, [isDownloading, modelLoading]);
+    const checkModelAndDisablePII = async () => {
+      if (settings?.pii_redaction_enabled && !isModelLoaded && !modelLoading) {
+        try {
+          // Check if model files exist through ModelManager
+          const models = await invoke<any[]>("get_available_models");
+          const piiModel = models.find(m => m.id === "gliner-pii-base");
 
-  // Listen for download progress events
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-
-    const setupListener = async () => {
-      unlisten = await listen<{downloaded: number, total: number, percentage: number}>(
-        'pii-model-download-progress',
-        (event) => {
-          setDownloadProgress(event.payload.percentage);
+          if (piiModel && !piiModel.is_downloaded) {
+            // Model doesn't exist, disable PII redaction
+            console.log("PII model not found, disabling PII redaction");
+            await updateSetting("pii_redaction_enabled", false);
+          }
+        } catch (error) {
+          console.error("Failed to check model status:", error);
         }
-      );
-    };
-
-    setupListener();
-
-    return () => {
-      if (unlisten) {
-        unlisten();
       }
     };
-  }, []);
+
+    if (settings?.pii_redaction_enabled !== undefined) {
+      checkModelAndDisablePII();
+    }
+  }, [settings?.pii_redaction_enabled, isModelLoaded, modelLoading, updateSetting]);
+
 
   const checkModelStatus = async () => {
     try {
@@ -80,27 +69,34 @@ export const PIIRedaction: React.FC<PIIRedactionProps> = ({
 
   const handleToggleRedaction = async (enabled: boolean) => {
     try {
-      await updateSetting("pii_redaction_enabled", enabled);
+      // If disabling, just update the setting
+      if (!enabled) {
+        await updateSetting("pii_redaction_enabled", enabled);
+        return;
+      }
 
-      // Download and load model if enabling redaction for the first time
+      // If enabling, check if model exists and download/load if needed
       if (enabled && !isModelLoaded && !modelLoading) {
-        setIsDownloading(true);
-        setDownloadProgress(0);
+        setModelLoading(true);
         try {
-          // First download the model
-          await invoke("download_pii_model");
+          // Try to download the model through ModelManager
+          await invoke("download_model", { modelId: "gliner-pii-base" });
 
           // Then load it
-          setIsDownloading(false);
-          setModelLoading(true);
           await invoke("load_pii_model");
           setIsModelLoaded(true);
+
+          // Only enable PII redaction if model loaded successfully
+          await updateSetting("pii_redaction_enabled", enabled);
         } catch (error) {
           console.error("Failed to download/load PII model:", error);
-          setIsDownloading(false);
+          // Don't enable PII redaction if model failed to load
         } finally {
           setModelLoading(false);
         }
+      } else if (enabled && isModelLoaded) {
+        // Model is already loaded, just enable PII redaction
+        await updateSetting("pii_redaction_enabled", enabled);
       }
     } catch (error) {
       console.error("Failed to toggle PII redaction:", error);
@@ -246,22 +242,14 @@ export const PIIRedaction: React.FC<PIIRedactionProps> = ({
               </div>
             </div>
 
-            {/* Download/Loading Status */}
-            {(isDownloading || modelLoading) && (
+            {/* Loading Status */}
+            {modelLoading && (
               <div className="flex items-center justify-center mt-4 p-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center space-x-2">
                   <div className="w-4 h-4 border-2 border-logo-primary border-t-transparent rounded-full animate-spin"></div>
                   <span className="text-sm text-gray-600">
-                    {isDownloading
-                      ? `Download model${'.'.repeat(loadingDots)}`
-                      : `Loading model${'.'.repeat(loadingDots)}`
-                    }
+                    Loading model...
                   </span>
-                  {isDownloading && downloadProgress > 0 && (
-                    <span className="text-xs text-gray-500">
-                      ({downloadProgress.toFixed(1)}%)
-                    </span>
-                  )}
                 </div>
               </div>
             )}

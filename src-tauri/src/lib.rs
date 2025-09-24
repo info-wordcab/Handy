@@ -257,7 +257,6 @@ pub fn run() {
             commands::pii::get_show_pii_entity_labels,
             commands::pii::set_show_pii_entity_labels,
             commands::pii::is_pii_model_loaded,
-            commands::pii::download_pii_model,
             commands::pii::load_pii_model,
             commands::pii::unload_pii_model,
             commands::pii::test_pii_redaction

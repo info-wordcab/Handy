@@ -248,6 +248,9 @@ impl TranscriptionManager {
                     })?;
                 LoadedEngine::Parakeet(engine)
             }
+            EngineType::GLiNER => {
+                return Err(anyhow::anyhow!("GLiNER models are not supported for transcription. GLiNER models are used for PII detection only."));
+            }
         };
 
         // Update the current engine and model ID

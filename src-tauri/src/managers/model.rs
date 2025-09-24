@@ -12,10 +12,11 @@ use std::sync::Mutex;
 use tar::Archive;
 use tauri::{App, AppHandle, Emitter, Manager};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum EngineType {
     Whisper,
     Parakeet,
+    GLiNER,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,6 +149,24 @@ impl ModelManager {
                 partial_size: 0,
                 is_directory: true,
                 engine_type: EngineType::Parakeet,
+            },
+        );
+
+        // Add GLiNER PII Base model (directory-based with tokenizer and model files)
+        available_models.insert(
+            "gliner-pii-base".to_string(),
+            ModelInfo {
+                id: "gliner-pii-base".to_string(),
+                name: "GLiNER PII Base".to_string(),
+                description: "PII detection and redaction".to_string(),
+                filename: "pii".to_string(), // Directory name
+                url: Some("gliner-pii-base".to_string()), // Special handling for multiple files
+                size_mb: 197, // Size of model_quint8.onnx
+                is_downloaded: false,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: true,
+                engine_type: EngineType::GLiNER,
             },
         );
 
@@ -287,6 +306,11 @@ impl ModelManager {
 
         let model_info =
             model_info.ok_or_else(|| anyhow::anyhow!("Model not found: {}", model_id))?;
+
+        // Special handling for GLiNER models (multiple files)
+        if model_info.engine_type == EngineType::GLiNER {
+            return self.download_gliner_model(&model_info).await;
+        }
 
         let url = model_info
             .url
@@ -652,5 +676,101 @@ impl ModelManager {
 
         println!("ModelManager: Download cancelled for: {}", model_id);
         Ok(())
+    }
+
+    async fn download_gliner_model(&self, model_info: &ModelInfo) -> Result<()> {
+        let model_id = &model_info.id;
+        let model_dir = self.models_dir.join(&model_info.filename);
+
+        // Check if both files already exist
+        let tokenizer_path = model_dir.join("tokenizer.json");
+        let model_path = model_dir.join("model_quint8.onnx");
+
+        if tokenizer_path.exists() && model_path.exists() {
+            self.update_download_status()?;
+            return Ok(());
+        }
+
+        // Create the model directory
+        if !model_dir.exists() {
+            fs::create_dir_all(&model_dir)?;
+        }
+
+        // Mark as downloading
+        {
+            let mut models = self.available_models.lock().unwrap();
+            if let Some(model) = models.get_mut(model_id) {
+                model.is_downloading = true;
+            }
+        }
+
+        // URLs for the two files
+        let tokenizer_url = "https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/tokenizer.json?download=true";
+        let model_url = "https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/onnx/model_quint8.onnx?download=true";
+
+        // Download both files
+        let mut total_downloaded = 0u64;
+        let estimated_total_size = 197 * 1024 * 1024; // 197MB
+
+        // Download tokenizer (smaller file first)
+        if !tokenizer_path.exists() {
+            total_downloaded += self.download_file(tokenizer_url, &tokenizer_path, model_id, total_downloaded, estimated_total_size).await?;
+        }
+
+        // Download model (larger file)
+        if !model_path.exists() {
+            total_downloaded += self.download_file(model_url, &model_path, model_id, total_downloaded, estimated_total_size).await?;
+        }
+
+        // Mark as not downloading and update status
+        {
+            let mut models = self.available_models.lock().unwrap();
+            if let Some(model) = models.get_mut(model_id) {
+                model.is_downloading = false;
+            }
+        }
+
+        self.update_download_status()?;
+        Ok(())
+    }
+
+    async fn download_file(&self, url: &str, path: &PathBuf, model_id: &str, base_downloaded: u64, total_size: u64) -> Result<u64> {
+        let client = reqwest::Client::new();
+        let response = client.get(url).send().await?;
+
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("Failed to download file: HTTP {}", response.status()));
+        }
+
+        let file_size = response.content_length().unwrap_or(0);
+        let mut downloaded = 0u64;
+        let mut stream = response.bytes_stream();
+        let mut file = std::fs::File::create(path)?;
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            file.write_all(&chunk)?;
+            downloaded += chunk.len() as u64;
+
+            let total_progress = base_downloaded + downloaded;
+            let percentage = if total_size > 0 {
+                (total_progress as f64 / total_size as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            // Emit progress event
+            let progress = DownloadProgress {
+                model_id: model_id.to_string(),
+                downloaded: total_progress,
+                total: total_size,
+                percentage,
+            };
+
+            let _ = self.app_handle.emit("model-download-progress", &progress);
+        }
+
+        file.flush()?;
+        Ok(file_size)
     }
 }
