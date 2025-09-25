@@ -149,6 +149,11 @@ jobs:
           echo "CERT_ID=$CERT_ID" >> $GITHUB_ENV
           echo "Certificate imported."
 
+      - name: Set Windows Rust Flags
+        if: contains(inputs.platform, 'windows')
+        shell: pwsh
+        run: echo "RUSTFLAGS=-C target-feature=+crt-static" >> $env:GITHUB_ENV
+
       - name: Build with Tauri
         uses: tauri-apps/tauri-action@v0
         env:
@@ -172,6 +177,7 @@ jobs:
           releaseName: ${{ inputs.release-id && format('v{0}', steps.get-version.outputs.version) || '' }}
           releaseId: ${{ inputs.release-id }}
           args: ${{ inputs.build-args }}
+          includeUpdaterJson: false
 
       - name: Ad-hoc Sign macOS App
         if: contains(inputs.platform, 'macos') && !inputs.sign-binaries

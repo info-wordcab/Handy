@@ -161,7 +161,7 @@ impl ModelManager {
                 description: "PII detection and redaction".to_string(),
                 filename: "pii".to_string(), // Directory name
                 url: Some("gliner-pii-base".to_string()), // Special handling for multiple files
-                size_mb: 197, // Size of model_quint8.onnx
+                size_mb: 333, // Size of model.onnx (float16)
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,
@@ -191,6 +191,15 @@ impl ModelManager {
     pub fn get_available_models(&self) -> Vec<ModelInfo> {
         let models = self.available_models.lock().unwrap();
         models.values().cloned().collect()
+    }
+
+    pub fn get_transcription_models(&self) -> Vec<ModelInfo> {
+        let models = self.available_models.lock().unwrap();
+        // Filter out GLiNER models from transcription model selector (they're for PII only)
+        models.values()
+            .filter(|model| model.engine_type != EngineType::GLiNER)
+            .cloned()
+            .collect()
     }
 
     pub fn get_model_info(&self, model_id: &str) -> Option<ModelInfo> {
@@ -678,13 +687,46 @@ impl ModelManager {
         Ok(())
     }
 
+    /// Detect if GPU (CUDA) support is compiled in
+    /// Runtime GPU availability will be detected during model loading
+    fn is_gpu_available(&self) -> bool {
+        #[cfg(feature = "cuda")]
+        {
+            println!("CUDA support compiled in - will attempt GPU acceleration with CPU fallback");
+            true
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            println!("CUDA feature not compiled - will use CPU execution");
+            false
+        }
+    }
+
     async fn download_gliner_model(&self, model_info: &ModelInfo) -> Result<()> {
         let model_id = &model_info.id;
         let model_dir = self.models_dir.join(&model_info.filename);
 
+        // Detect GPU availability to choose appropriate model
+        let has_gpu = self.is_gpu_available();
+        let (model_url, model_filename, estimated_total_size) = if has_gpu {
+            println!("GPU detected: downloading float16 model for better performance");
+            (
+                "https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/onnx/model_fp16.onnx?download=true",
+                "model.onnx",
+                333 * 1024 * 1024, // 333MB for float16 model
+            )
+        } else {
+            println!("No GPU detected: downloading quantized int8 model for CPU execution");
+            (
+                "https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/onnx/model_quint8.onnx?download=true",
+                "model.onnx",
+                197 * 1024 * 1024, // 197MB for int8 quantized model
+            )
+        };
+
         // Check if both files already exist
         let tokenizer_path = model_dir.join("tokenizer.json");
-        let model_path = model_dir.join("model_quint8.onnx");
+        let model_path = model_dir.join(model_filename);
 
         if tokenizer_path.exists() && model_path.exists() {
             self.update_download_status()?;
@@ -706,11 +748,9 @@ impl ModelManager {
 
         // URLs for the two files
         let tokenizer_url = "https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/tokenizer.json?download=true";
-        let model_url = "https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/onnx/model_quint8.onnx?download=true";
 
         // Download both files
         let mut total_downloaded = 0u64;
-        let estimated_total_size = 197 * 1024 * 1024; // 197MB
 
         // Download tokenizer (smaller file first)
         if !tokenizer_path.exists() {
@@ -719,7 +759,7 @@ impl ModelManager {
 
         // Download model (larger file)
         if !model_path.exists() {
-            total_downloaded += self.download_file(model_url, &model_path, model_id, total_downloaded, estimated_total_size).await?;
+            let _ = self.download_file(model_url, &model_path, model_id, total_downloaded, estimated_total_size).await?;
         }
 
         // Mark as not downloading and update status
@@ -729,6 +769,9 @@ impl ModelManager {
                 model.is_downloading = false;
             }
         }
+
+        // Emit download completion event
+        let _ = self.app_handle.emit("model-download-complete", model_id);
 
         self.update_download_status()?;
         Ok(())

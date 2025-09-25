@@ -8,8 +8,6 @@ use gliner::model::{
 use gliner::orp::params::RuntimeParameters;
 #[cfg(feature = "cuda")]
 use gliner::execution_providers::{CPUExecutionProvider, CUDAExecutionProvider};
-#[cfg(not(feature = "cuda"))]
-use gliner::execution_providers::CPUExecutionProvider;
 use log::debug;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -64,18 +62,6 @@ pub const FINANCIAL_INFORMATION: &[&str] = &[
     "money",
 ];
 
-pub const HEALTHCARE_INFORMATION: &[&str] = &[
-    "condition",
-    "medical process",
-    "drug",
-    "dose",
-    "blood type",
-    "injury",
-    "organization medical facility",
-    "healthcare number",
-    "medical code",
-];
-
 pub const IDENTIFICATION_DOCUMENTS: &[&str] = &[
     "passport number",
     "driver license",
@@ -86,7 +72,7 @@ pub const IDENTIFICATION_DOCUMENTS: &[&str] = &[
 
 pub struct PIIRedactor {
     model: Arc<Mutex<Option<GLiNER<SpanMode>>>>,
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     model_path: PathBuf,
     tokenizer_path: PathBuf,
 }
@@ -98,7 +84,6 @@ impl PIIRedactor {
             "personal_identifiers" => PERSONAL_IDENTIFIERS,
             "contact_information" => CONTACT_INFORMATION,
             "financial_information" => FINANCIAL_INFORMATION,
-            "healthcare_information" => HEALTHCARE_INFORMATION,
             "identification_documents" => IDENTIFICATION_DOCUMENTS,
             _ => &[], // Unknown category
         }
@@ -133,7 +118,7 @@ impl PIIRedactor {
         }
 
         let tokenizer_path = model_base.join("tokenizer.json");
-        let model_path = model_base.join("model_quint8.onnx");
+        let model_path = model_base.join("model.onnx");
 
         debug!("PII model base directory: {:?}", model_base);
         debug!("Tokenizer path: {:?}", tokenizer_path);
@@ -141,7 +126,7 @@ impl PIIRedactor {
 
         Ok(Self {
             model: Arc::new(Mutex::new(None)),
-            app_handle: app_handle.clone(),
+            _app_handle: app_handle.clone(),
             model_path,
             tokenizer_path,
         })
@@ -236,6 +221,12 @@ impl PIIRedactor {
 
     /// Redact PII from text
     pub fn redact_text(&self, text: &str, entities_to_redact: &[String], show_entity_labels: bool) -> Result<String> {
+        // Check if text already contains redacted entities to avoid double redaction
+        if text.contains("[") && text.contains("]") {
+            debug!("Text already appears to contain redacted entities, skipping redaction: '{}'", text);
+            return Ok(text.to_string());
+        }
+
         // Ensure model is loaded
         if !self.is_model_loaded() {
             self.load_model()?;
@@ -315,10 +306,26 @@ impl PIIRedactor {
 
         debug!("Found {} spans to redact", spans_to_redact.len());
         for (i, (start, end, entity_type, original_text)) in spans_to_redact.iter().enumerate() {
-            debug!("Span {}: '{}' ({}) at {}..{}", i, original_text, entity_type, start, end);
+            debug!("Span {}: '{}' (entity_type='{}') at {}..{}", i, original_text, entity_type, start, end);
         }
 
-        // Sort by start position in reverse order
+        // Remove overlapping spans to prevent double redaction
+        spans_to_redact.sort_by(|a, b| a.0.cmp(&b.0)); // Sort by start position first
+        let mut deduplicated_spans = Vec::new();
+        for span in spans_to_redact {
+            let overlaps = deduplicated_spans.iter().any(|(start, end, _, _): &(usize, usize, String, String)| {
+                // Check if this span overlaps with any existing span
+                !(span.1 <= *start || span.0 >= *end)
+            });
+            if !overlaps {
+                deduplicated_spans.push(span);
+            } else {
+                debug!("Removing overlapping span: '{}' at {}..{}", span.3, span.0, span.1);
+            }
+        }
+        spans_to_redact = deduplicated_spans;
+
+        // Sort by start position in reverse order for replacement
         spans_to_redact.sort_by(|a, b| b.0.cmp(&a.0));
 
         // Replace detected entities with redacted versions
@@ -332,8 +339,12 @@ impl PIIRedactor {
 
             // Create redaction based on settings
             let redaction = if show_entity_labels {
+                // Clean entity type (remove any brackets that might be in the GLiNER output)
+                let clean_entity_type = entity_type.trim_matches(['[', ']', ' ']).to_lowercase();
+                debug!("Cleaned entity_type from '{}' to '{}'", entity_type, clean_entity_type);
+
                 // Use generic entity labels based on GLiNER entity types
-                match entity_type.as_str() {
+                match clean_entity_type.as_str() {
                     // Personal identifiers
                     "name" | "first name" | "last name" => "[NAME]".to_string(),
                     "name medical professional" => "[MEDICAL_PROFESSIONAL]".to_string(),
@@ -362,17 +373,6 @@ impl PIIRedactor {
                     "ssn" => "[SSN]".to_string(),
                     "money" => "[MONETARY_AMOUNT]".to_string(),
 
-                    // Healthcare information
-                    "condition" => "[MEDICAL_CONDITION]".to_string(),
-                    "medical process" => "[MEDICAL_PROCEDURE]".to_string(),
-                    "drug" => "[MEDICATION]".to_string(),
-                    "dose" => "[DOSAGE]".to_string(),
-                    "blood type" => "[BLOOD_TYPE]".to_string(),
-                    "injury" => "[INJURY]".to_string(),
-                    "organization medical facility" => "[MEDICAL_FACILITY]".to_string(),
-                    "healthcare number" => "[HEALTHCARE_NUMBER]".to_string(),
-                    "medical code" => "[MEDICAL_CODE]".to_string(),
-
                     // Identification documents
                     "passport number" => "[PASSPORT]".to_string(),
                     "driver license" => "[DRIVER_LICENSE]".to_string(),
@@ -381,13 +381,17 @@ impl PIIRedactor {
                     "vehicle id" => "[VEHICLE_ID]".to_string(),
 
                     // Generic fallback
-                    _ => format!("[{}]", entity_type.to_uppercase().replace(" ", "_")),
+                    _ => {
+                        let fallback = format!("[{}]", clean_entity_type.to_uppercase().replace(" ", "_"));
+                        debug!("Using generic fallback for entity '{}' -> '{}'", clean_entity_type, fallback);
+                        fallback
+                    },
                 }
             } else {
                 // Use hashtag redaction based on original text length
                 "#".repeat(original_text.len())
             };
-            debug!("Redacting '{}' ({}) at {}..{} with '{}'", original_text, entity_type, start, end, redaction);
+            debug!("Redacting '{}' (entity_type='{}') at {}..{} with redaction='{}'", original_text, entity_type, start, end, redaction);
 
             // Calculate byte positions from current redacted_text
             let byte_start = redacted_text.char_indices()
@@ -419,6 +423,7 @@ impl PIIRedactor {
     }
 
     /// Redact multiple texts in batch
+    #[allow(dead_code)]
     pub fn redact_texts(&self, texts: &[String], entities_to_redact: &[String], show_entity_labels: bool) -> Result<Vec<String>> {
         texts
             .iter()
