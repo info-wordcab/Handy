@@ -173,10 +173,11 @@ jobs:
           echo "CERT_ID=$CERT_ID" >> $GITHUB_ENV
           echo "Certificate imported."
 
-      - name: Set Windows Rust Flags
-        if: contains(inputs.platform, 'windows')
-        shell: pwsh
-        run: echo "RUSTFLAGS=-C target-feature=-crt-static" >> $env:GITHUB_ENV
+      # Windows Rust flags are now handled in .cargo/config.toml
+      # - name: Set Windows Rust Flags
+      #   if: contains(inputs.platform, 'windows')
+      #   shell: pwsh
+      #   run: echo "RUSTFLAGS=-C target-feature=-crt-static" >> $env:GITHUB_ENV
 
       - name: Build with Tauri
         uses: tauri-apps/tauri-action@v0
