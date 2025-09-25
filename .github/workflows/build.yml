@@ -185,6 +185,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Fix CMake compatibility issue on macOS
           CMAKE_POLICY_VERSION_MINIMUM: ${{ contains(inputs.platform, 'macos') && '3.5' || '' }}
+          # Fix Windows C/C++ runtime library conflicts
+          CXXFLAGS: ${{ contains(inputs.platform, 'windows') && '/MD' || '' }}
+          CFLAGS: ${{ contains(inputs.platform, 'windows') && '/MD' || '' }}
           APPLE_ID: ${{ inputs.sign-binaries && secrets.APPLE_ID || '' }}
           APPLE_ID_PASSWORD: ${{ inputs.sign-binaries && secrets.APPLE_ID_PASSWORD || '' }}
           APPLE_PASSWORD: ${{ inputs.sign-binaries && secrets.APPLE_PASSWORD || '' }}
