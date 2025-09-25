@@ -192,7 +192,8 @@ jobs:
       #   shell: pwsh
       #   run: echo "RUSTFLAGS=-C target-feature=-crt-static" >> $env:GITHUB_ENV
 
-      - name: Build with Tauri
+      - name: Build with Tauri (Signed)
+        if: inputs.sign-binaries
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -201,19 +202,36 @@ jobs:
           # Fix Windows C/C++ runtime library conflicts
           CXXFLAGS: ${{ contains(inputs.platform, 'windows') && '/MD' || '' }}
           CFLAGS: ${{ contains(inputs.platform, 'windows') && '/MD' || '' }}
-          APPLE_ID: ${{ inputs.sign-binaries && secrets.APPLE_ID || '' }}
-          APPLE_ID_PASSWORD: ${{ inputs.sign-binaries && secrets.APPLE_ID_PASSWORD || '' }}
-          APPLE_PASSWORD: ${{ inputs.sign-binaries && secrets.APPLE_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ inputs.sign-binaries && secrets.APPLE_TEAM_ID || '' }}
-          APPLE_CERTIFICATE: ${{ inputs.sign-binaries && secrets.APPLE_CERTIFICATE || '' }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ inputs.sign-binaries && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
-          APPLE_SIGNING_IDENTITY: ${{ inputs.sign-binaries && env.CERT_ID || '' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ env.CERT_ID }}
           AZURE_CLIENT_ID: ${{ contains(inputs.platform, 'windows') && secrets.AZURE_CLIENT_ID || '' }}
           AZURE_CLIENT_SECRET: ${{ contains(inputs.platform, 'windows') && secrets.AZURE_CLIENT_SECRET || '' }}
           AZURE_TENANT_ID: ${{ contains(inputs.platform, 'windows') && secrets.AZURE_TENANT_ID || '' }}
-          # Set updater signing keys only when signing is enabled, otherwise leave empty to skip updater artifacts
-          TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.sign-binaries && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.sign-binaries && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ inputs.release-id && format('v{0}', steps.get-version.outputs.version) || '' }}
+          releaseName: ${{ inputs.release-id && format('v{0}', steps.get-version.outputs.version) || '' }}
+          releaseId: ${{ inputs.release-id }}
+          args: ${{ inputs.build-args }}
+          includeUpdaterJson: false
+
+      - name: Build with Tauri (Unsigned)
+        if: ${{ !inputs.sign-binaries }}
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Fix CMake compatibility issue on macOS
+          CMAKE_POLICY_VERSION_MINIMUM: ${{ contains(inputs.platform, 'macos') && '3.5' || '' }}
+          # Fix Windows C/C++ runtime library conflicts
+          CXXFLAGS: ${{ contains(inputs.platform, 'windows') && '/MD' || '' }}
+          CFLAGS: ${{ contains(inputs.platform, 'windows') && '/MD' || '' }}
+          # No certificate-related variables for unsigned builds
         with:
           tagName: ${{ inputs.release-id && format('v{0}', steps.get-version.outputs.version) || '' }}
           releaseName: ${{ inputs.release-id && format('v{0}', steps.get-version.outputs.version) || '' }}
