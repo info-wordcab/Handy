@@ -41,6 +41,11 @@ jobs:
     permissions:
       contents: write
     runs-on: ${{ inputs.platform }}
+    env:
+      # Force dynamic linking for Windows builds only (fixes esaxx-rs linking issues)
+      CXXFLAGS: ${{ contains(inputs.platform, 'windows') && '/MD' || '' }}
+      CFLAGS: ${{ contains(inputs.platform, 'windows') && '/MD' || '' }}
+      RUSTFLAGS: ${{ contains(inputs.platform, 'windows') && '-C target-feature=-crt-static' || '' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -69,7 +74,7 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
-          key: ${{ inputs.platform }}-${{ inputs.target }}
+          key: ${{ inputs.platform }}-${{ inputs.target }}-v3
 
       - name: install dependencies (ubuntu 24.04)
         if: contains(inputs.platform, 'ubuntu-24.04')
@@ -117,6 +122,14 @@ jobs:
           sudo apt update
           sudo apt install vulkan-sdk -y
           sudo apt-get install -y mesa-vulkan-drivers
+
+      - name: Clean build for Windows
+        if: contains(inputs.platform, 'windows')
+        shell: cmd
+        run: |
+          cd src-tauri
+          cargo clean
+          cd ..
 
       - name: install frontend dependencies
         run: bun install
