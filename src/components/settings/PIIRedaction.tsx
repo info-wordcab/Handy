@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useSettings } from "@/hooks/useSettings";
-import { ToggleSwitch } from "@/components/ui/ToggleSwitch";
-import { SettingContainer } from "@/components/ui/SettingContainer";
+import { useSettings } from "../../hooks/useSettings";
+import { ToggleSwitch } from "../ui/ToggleSwitch";
+import { SettingContainer } from "../ui/SettingContainer";
+import { InfoTooltip } from "../ui/InfoTooltip";
 
 type DescriptionMode = "tooltip" | "inline";
 
@@ -15,7 +16,6 @@ const PII_ENTITY_OPTIONS = [
   { value: "personal_identifiers", label: "Personal Identifiers", description: "Names, dates of birth, age, gender, etc." },
   { value: "contact_information", label: "Contact Information", description: "Email, phone numbers, addresses, URLs, etc." },
   { value: "financial_information", label: "Financial Information", description: "SSN, account numbers, credit cards, etc." },
-  { value: "healthcare_information", label: "Healthcare Information", description: "Conditions, medical processes, drugs, etc." },
   { value: "identification_documents", label: "Identification Documents", description: "Passport numbers, licenses, usernames, etc." },
 ];
 
@@ -118,7 +118,7 @@ export const PIIRedaction: React.FC<PIIRedactionProps> = ({
     if (enabled) {
       newEntities = [...currentEntities, entityValue];
     } else {
-      newEntities = currentEntities.filter(e => e !== entityValue);
+      newEntities = currentEntities.filter((e: string) => e !== entityValue);
     }
 
     try {
@@ -147,21 +147,11 @@ export const PIIRedaction: React.FC<PIIRedactionProps> = ({
       <div className={containerClass}>
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-medium">PII Redaction</h3>
+          {modelLoading && (
+            <div className="w-4 h-4 border-2 border-logo-primary border-t-transparent rounded-full animate-spin"></div>
+          )}
           {descriptionMode === "tooltip" && (
-            <svg
-              className="w-4 h-4 text-mid-gray cursor-help"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              title="Automatically detect and redact personal information before output"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <InfoTooltip description="Automatically detect and redact personal information before output" />
           )}
         </div>
         <label className="inline-flex items-center cursor-pointer">
@@ -174,11 +164,6 @@ export const PIIRedaction: React.FC<PIIRedactionProps> = ({
             onChange={(e) => handleToggleRedaction(e.target.checked)}
           />
           <div className="relative w-11 h-6 bg-mid-gray/20 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-logo-primary rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-background-ui peer-disabled:opacity-50"></div>
-          {modelLoading && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-4 h-4 border-2 border-logo-primary border-t-transparent rounded-full animate-spin"></div>
-            </div>
-          )}
         </label>
       </div>
 
@@ -189,20 +174,7 @@ export const PIIRedaction: React.FC<PIIRedactionProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <h4 className="text-sm font-medium text-gray-900">Show Entity Labels</h4>
-                <svg
-                  className="w-4 h-4 text-mid-gray cursor-help"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  title="Replace sensitive information with named labels such as '[NAME]' instead of hashtags like '####'"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+                <InfoTooltip description="Replace sensitive information with named labels such as [NAME] instead of hashtags like ####" />
               </div>
               <label className="inline-flex items-center cursor-pointer">
                 <input

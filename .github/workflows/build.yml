@@ -171,6 +171,20 @@ jobs:
           releaseId: ${{ inputs.release-id }}
           args: ${{ inputs.build-args }}
 
+      - name: Ad-hoc Sign macOS App
+        if: contains(inputs.platform, 'macos') && !inputs.sign-binaries
+        run: |
+          # Find the app bundle
+          APP_PATH=$(find src-tauri/target/*/release/bundle/macos -name "*.app" | head -1)
+          if [ -n "$APP_PATH" ]; then
+            echo "Ad-hoc signing: $APP_PATH"
+            # Ad-hoc sign the app (no certificate required)
+            codesign --sign - --force --deep "$APP_PATH"
+            echo "Ad-hoc signing completed"
+          else
+            echo "No app bundle found to sign"
+          fi
+
       - name: Upload artifacts (macOS)
         if: inputs.upload-artifacts && contains(inputs.platform, 'macos')
         uses: actions/upload-artifact@v4

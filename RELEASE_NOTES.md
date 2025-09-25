@@ -33,6 +33,8 @@ Model Collection: https://huggingface.co/collections/knowledgator/gliner-pii-68d
 ## Installation
 Download the appropriate installer for your platform below. The PII model will be automatically downloaded on first use when PII redaction is enabled.
 
+**macOS Users**: The app is ad-hoc signed. See [macOS Installation Instructions](./INSTALL_MACOS.md) for first-time setup.
+
 ## Credits
 - Original Handy by @cjpais
 - PII redaction feature and gline-rs modifications by Wordcab team
