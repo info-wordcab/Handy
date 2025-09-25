@@ -132,17 +132,37 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
-          if [ -n "$APPLE_CERTIFICATE" ]; then
+          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_CERTIFICATE_PASSWORD" ] && [ -n "$KEYCHAIN_PASSWORD" ]; then
+            echo "Importing Apple Developer Certificate..."
             echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
+
+            # Verify the certificate file was created and has content
+            if [ ! -s certificate.p12 ]; then
+              echo "Error: Certificate file is empty or failed to decode"
+              exit 1
+            fi
+
             security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
             security default-keychain -s build.keychain
             security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
             security set-keychain-settings -t 3600 -u build.keychain
-            security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
-            security find-identity -v -p codesigning build.keychain
+
+            # Import certificate with error handling
+            if security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign; then
+              security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+              security find-identity -v -p codesigning build.keychain
+              echo "Certificate imported successfully"
+            else
+              echo "Error: Failed to import certificate"
+              echo "Certificate file size: $(wc -c < certificate.p12) bytes"
+              exit 1
+            fi
+
+            # Clean up certificate file
+            rm certificate.p12
           else
-            echo "No Apple certificate provided, skipping certificate import"
+            echo "Error: Missing required certificate secrets (APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, or KEYCHAIN_PASSWORD)"
+            exit 1
           fi
 
       - name: verify certificate
@@ -174,8 +194,9 @@ jobs:
           AZURE_CLIENT_ID: ${{ inputs.sign-binaries && secrets.AZURE_CLIENT_ID || '' }}
           AZURE_CLIENT_SECRET: ${{ inputs.sign-binaries && secrets.AZURE_CLIENT_SECRET || '' }}
           AZURE_TENANT_ID: ${{ inputs.sign-binaries && secrets.AZURE_TENANT_ID || '' }}
-          TAURI_SIGNING_PRIVATE_KEY: ''
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+          # Set updater signing keys only when signing is enabled, otherwise leave empty to skip updater artifacts
+          TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.sign-binaries && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.sign-binaries && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         with:
           tagName: ${{ inputs.release-id && format('v{0}', steps.get-version.outputs.version) || '' }}
           releaseName: ${{ inputs.release-id && format('v{0}', steps.get-version.outputs.version) || '' }}

@@ -1,1 +1,6 @@
 [build]
+
+# Fix Windows linker conflicts between msvcprt.lib and libcpmt.lib
+# Use dynamic linking for the C runtime to avoid symbol conflicts
+[target.'cfg(target_os = "windows")']
+rustflags = ["-C", "target-feature=-crt-static"]

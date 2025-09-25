@@ -193,6 +193,7 @@ impl ModelManager {
         models.values().cloned().collect()
     }
 
+    #[allow(dead_code)] // Used by Tauri commands
     pub fn get_transcription_models(&self) -> Vec<ModelInfo> {
         let models = self.available_models.lock().unwrap();
         // Filter out GLiNER models from transcription model selector (they're for PII only)
