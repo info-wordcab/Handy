@@ -64,7 +64,6 @@
       }
     },
     "windows": {
-      "_signCommand_disabled": "trusted-signing-cli -e https://eus.codesigning.azure.net/ -a handysigning -c HandyCodeSign -d Handy-PII %1"
     }
   },
   "plugins": {
