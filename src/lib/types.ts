@@ -59,6 +59,7 @@ export const SettingsSchema = z.object({
     "credit_card",
   ]),
   show_pii_entity_labels: z.boolean().optional().default(false),
+  enable_api_server: z.boolean().optional().default(true),
 });
 
 export const BindingResponseSchema = z.object({
@@ -84,6 +85,7 @@ export const ModelInfoSchema = z.object({
   is_downloading: z.boolean(),
   partial_size: z.number(),
   is_directory: z.boolean(),
+  engine_type: z.enum(["Whisper", "Parakeet", "GLiNER"]),
 });
 
 export type ModelInfo = z.infer<typeof ModelInfoSchema>;

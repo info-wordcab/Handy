@@ -6,6 +6,7 @@ mod commands;
 mod managers;
 mod overlay;
 mod pii_redactor;
+mod server;
 mod settings;
 mod shortcut;
 mod tray;
@@ -170,6 +171,21 @@ pub fn run() {
                 PIIRedactor::new(&app.handle()).expect("Failed to initialize PII redactor"),
             );
 
+            // Initialize server if enabled in settings
+            let settings = settings::get_settings(&app.handle());
+            println!("API server enabled: {}", settings.enable_api_server);
+            if settings.enable_api_server {
+                println!("Starting API server on port 7878...");
+                let (server_state, _server_task) = tokio::runtime::Runtime::new()
+                    .unwrap()
+                    .block_on(server::start_server(7878))
+                    .expect("Failed to start API server");
+                app.manage(server_state);
+                println!("API server started successfully!");
+            } else {
+                println!("API server is disabled in settings");
+            }
+
             // Add managers to Tauri's managed state
             app.manage(recording_manager.clone());
             app.manage(model_manager.clone());
@@ -223,6 +239,7 @@ pub fn run() {
             commands::cancel_operation,
             commands::get_app_dir_path,
             commands::models::get_available_models,
+            commands::models::get_transcription_models,
             commands::models::get_model_info,
             commands::models::download_model,
             commands::models::delete_model,

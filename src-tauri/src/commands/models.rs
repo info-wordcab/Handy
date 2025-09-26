@@ -12,6 +12,13 @@ pub async fn get_available_models(
 }
 
 #[tauri::command]
+pub async fn get_transcription_models(
+    model_manager: State<'_, Arc<ModelManager>>,
+) -> Result<Vec<ModelInfo>, String> {
+    Ok(model_manager.get_transcription_models())
+}
+
+#[tauri::command]
 pub async fn get_model_info(
     model_manager: State<'_, Arc<ModelManager>>,
     model_id: String,

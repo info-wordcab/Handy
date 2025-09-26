@@ -101,6 +101,32 @@ jobs:
           version: 1.4.309.0
           cache: true
 
+      - name: Download ONNX Runtime for Windows
+        if: contains(inputs.platform, 'windows')
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "src-tauri/resources/onnxruntime"
+          $onnxUrl = "https://github.com/microsoft/onnxruntime/releases/download/v1.22.0/onnxruntime-win-x64-1.22.0.zip"
+          $onnxZip = "src-tauri/resources/onnxruntime/onnxruntime-win-x64-1.22.0.zip"
+
+          Write-Host "Downloading ONNX Runtime from: $onnxUrl"
+          Invoke-WebRequest -Uri $onnxUrl -OutFile $onnxZip -TimeoutSec 300
+
+          Write-Host "Extracting ONNX Runtime..."
+          Expand-Archive -Path $onnxZip -DestinationPath "src-tauri/resources/onnxruntime/temp" -Force
+
+          # Move the lib directory to the expected location
+          $libSource = "src-tauri/resources/onnxruntime/temp/onnxruntime-win-x64-1.22.0/lib"
+          $libDest = "src-tauri/resources/onnxruntime/lib"
+          Move-Item -Path $libSource -Destination $libDest -Force
+
+          # Clean up
+          Remove-Item -Path "src-tauri/resources/onnxruntime/temp" -Recurse -Force
+          Remove-Item -Path $onnxZip -Force
+
+          Write-Host "ONNX Runtime DLLs prepared for bundling"
+          Get-ChildItem -Path "src-tauri/resources/onnxruntime/lib" -Name
+
       - name: Install trusted-signing-cli
         if: contains(inputs.platform, 'windows')
         run: cargo install trusted-signing-cli

@@ -73,7 +73,11 @@ tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tar = "0.4.44"
 flate2 = "1.0"
 transcribe-rs = { git = "https://github.com/cjpais/transcribe-rs.git" }
-gliner = { git = "https://github.com/info-wordcab/gline-rs.git", branch = "handy-integration", package = "gline-rs" }
+gliner = { git = "https://github.com/info-wordcab/gline-rs.git", branch = "handy-integration", package = "gline-rs", features = ["load-dynamic"] }
+axum = { version = "0.7", features = ["ws"] }
+tokio-tungstenite = "0.24"
+tower = { version = "0.5", features = ["util"] }
+uuid = { version = "1.0", features = ["v4"] }
 
 [features]
 default = []

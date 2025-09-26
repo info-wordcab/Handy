@@ -50,7 +50,8 @@
       "files": {},
       "hardenedRuntime": false,
       "minimumSystemVersion": "10.13",
-      "entitlements": "Entitlements.plist"
+      "entitlements": "Entitlements.plist",
+      "signingIdentity": "-"
     },
     "linux": {
       "rpm": {

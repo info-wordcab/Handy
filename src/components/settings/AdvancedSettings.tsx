@@ -7,6 +7,7 @@ import { AlwaysOnMicrophone } from "./AlwaysOnMicrophone";
 import { PIIRedaction } from "./PIIRedaction";
 import { SettingsGroup } from "../ui/SettingsGroup";
 import { StartHidden } from "./StartHidden";
+import { ApiServer } from "./ApiServer";
 
 export const AdvancedSettings: React.FC = () => {
   return (
@@ -19,6 +20,7 @@ export const AdvancedSettings: React.FC = () => {
         <CustomWords descriptionMode="tooltip" grouped />
         <AlwaysOnMicrophone descriptionMode="tooltip" grouped={true} />
         <PIIRedaction descriptionMode="tooltip" grouped={true} />
+        <ApiServer descriptionMode="tooltip" grouped={true} />
       </SettingsGroup>
     </div>
   );

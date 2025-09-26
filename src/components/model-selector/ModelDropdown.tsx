@@ -78,24 +78,30 @@ const ModelDropdown: React.FC<ModelDropdownProps> = ({
           <div className="px-3 py-1 text-xs font-medium text-text/80 border-b border-mid-gray/10">
             Available Models
           </div>
-          {availableModels.map((model) => (
-            <div
-              key={model.id}
-              onClick={() => handleModelClick(model.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  handleModelClick(model.id);
-                }
-              }}
-              tabIndex={0}
-              role="button"
-              className={`w-full px-3 py-2 text-left hover:bg-mid-gray/10 transition-colors cursor-pointer focus:outline-none ${
-                currentModelId === model.id
-                  ? "bg-logo-primary/10 text-logo-primary"
-                  : ""
-              }`}
-            >
+          {availableModels.map((model) => {
+            const isGLiNER = model.engine_type === "GLiNER";
+            return (
+              <div
+                key={model.id}
+                onClick={isGLiNER ? undefined : () => handleModelClick(model.id)}
+                onKeyDown={isGLiNER ? undefined : (e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleModelClick(model.id);
+                  }
+                }}
+                tabIndex={isGLiNER ? -1 : 0}
+                role={isGLiNER ? undefined : "button"}
+                className={`w-full px-3 py-2 text-left transition-colors focus:outline-none ${
+                  isGLiNER
+                    ? "opacity-60 cursor-default"
+                    : "hover:bg-mid-gray/10 cursor-pointer"
+                } ${
+                  currentModelId === model.id && !isGLiNER
+                    ? "bg-logo-primary/10 text-logo-primary"
+                    : ""
+                }`}
+              >
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm">{model.name}</div>
@@ -129,7 +135,8 @@ const ModelDropdown: React.FC<ModelDropdownProps> = ({
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

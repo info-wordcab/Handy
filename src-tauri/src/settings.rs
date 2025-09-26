@@ -99,6 +99,8 @@ pub struct AppSettings {
     pub pii_entities: Vec<String>,
     #[serde(default = "default_show_pii_entity_labels")]
     pub show_pii_entity_labels: bool,
+    #[serde(default = "default_enable_api_server")]
+    pub enable_api_server: bool,
 }
 
 fn default_model() -> String {
@@ -147,6 +149,10 @@ fn default_show_pii_entity_labels() -> bool {
     false
 }
 
+fn default_enable_api_server() -> bool {
+    true  // Default to enabled for testing
+}
+
 pub const SETTINGS_STORE_PATH: &str = "settings_store.json";
 
 pub fn get_default_settings() -> AppSettings {
@@ -190,6 +196,7 @@ pub fn get_default_settings() -> AppSettings {
         pii_redaction_enabled: default_pii_redaction_enabled(),
         pii_entities: default_pii_entities(),
         show_pii_entity_labels: default_show_pii_entity_labels(),
+        enable_api_server: default_enable_api_server(),
     }
 }
 

@@ -124,6 +124,27 @@ impl PIIRedactor {
         debug!("Tokenizer path: {:?}", tokenizer_path);
         debug!("Model path: {:?}", model_path);
 
+        // Configure ONNX Runtime DLL path for Windows
+        #[cfg(target_os = "windows")]
+        {
+            // Try to locate bundled ONNX Runtime DLLs
+            let resource_dir = app_handle
+                .path()
+                .resource_dir()
+                .map_err(|e| anyhow::anyhow!("Failed to get resource dir: {}", e))?;
+
+            let onnx_dll_dir = resource_dir.join("onnxruntime").join("lib");
+
+            if onnx_dll_dir.exists() {
+                let onnx_dll_path = onnx_dll_dir.to_string_lossy();
+                debug!("Setting ORT_DYLIB_PATH to bundled ONNX Runtime: {}", onnx_dll_path);
+                std::env::set_var("ORT_DYLIB_PATH", onnx_dll_path.as_ref());
+            } else {
+                debug!("Bundled ONNX Runtime not found at: {:?}", onnx_dll_dir);
+                debug!("ONNX Runtime will attempt to use system installation");
+            }
+        }
+
         Ok(Self {
             model: Arc::new(Mutex::new(None)),
             _app_handle: app_handle.clone(),
@@ -186,6 +207,22 @@ impl PIIRedactor {
         ).map_err(|e| {
             debug!("PII Model: Failed to load with error: {:?}", e);
             let error_str = format!("{:?}", e);
+
+            // Handle Windows-specific DLL loading errors
+            #[cfg(target_os = "windows")]
+            {
+                if error_str.contains("DLL") || error_str.contains("LoadLibrary") ||
+                   error_str.contains("onnxruntime") || error_str.contains("GetProcAddress") {
+                    return anyhow::anyhow!(
+                        "Failed to load ONNX Runtime on Windows. This may be caused by:\n\
+                        1. Missing Visual C++ Runtime (install Microsoft Visual C++ 2019-2022 Redistributable)\n\
+                        2. Missing ONNX Runtime DLLs (they should be bundled with the application)\n\
+                        3. Incompatible system configuration\n\
+                        \nOriginal error: {:?}", e
+                    );
+                }
+            }
+
             if error_str.contains("CUDA") || error_str.contains("cuda") {
                 debug!("PII Model: CUDA error detected - falling back to CPU");
             }

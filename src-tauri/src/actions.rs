@@ -4,6 +4,7 @@ use crate::managers::history::HistoryManager;
 use crate::managers::transcription::TranscriptionManager;
 use crate::overlay::{show_recording_overlay, show_transcribing_overlay};
 use crate::pii_redactor::PIIRedactor;
+use crate::server::{AppState, TranscriptionMessage};
 use crate::settings::get_settings;
 use crate::tray::{change_tray_icon, TrayIconState};
 use crate::utils;
@@ -151,6 +152,36 @@ impl ShortcutAction for TranscribeAction {
                                     error!("Failed to save transcription to history: {}", e);
                                 }
                             });
+
+                            // Broadcast to API server if enabled
+                            if settings.enable_api_server {
+                                if let Some(server_state) = ah.try_state::<AppState>() {
+                                    let (text, original_text, pii_applied) = if settings.pii_redaction_enabled {
+                                        // Send redacted text as main text, original as separate field
+                                        (final_text.clone(), Some(transcription.clone()), true)
+                                    } else {
+                                        // No PII redaction, just send the text normally
+                                        (final_text.clone(), None, false)
+                                    };
+
+                                    let message = TranscriptionMessage {
+                                        message_type: "transcription".to_string(),
+                                        text,
+                                        original_text,
+                                        timestamp: std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .unwrap()
+                                            .as_millis() as u64,
+                                        model: Some(settings.selected_model.clone()),
+                                        pii_redaction_applied: pii_applied,
+                                    };
+                                    server_state.broadcast_transcription(message);
+                                    debug!("Broadcasted transcription to API server (PII redaction: {})", pii_applied);
+                                } else {
+                                    debug!("API server not found in app state");
+                                }
+                            }
+
                             let final_text_clone = final_text.clone();
                             let ah_clone = ah.clone();
                             let paste_time = Instant::now();
