@@ -137,10 +137,17 @@ pub fn run() {
             // Initialize tray menu with idle state
             utils::update_tray_menu(&app.handle(), &utils::TrayIconState::Idle);
 
-            // Get the autostart manager
+            // Get the autostart manager and configure based on user setting
             let autostart_manager = app.autolaunch();
-            // Enable autostart
-            let _ = autostart_manager.enable();
+            let settings = settings::get_settings(&app.handle());
+
+            if settings.autostart_enabled {
+                // Enable autostart if user has opted in
+                let _ = autostart_manager.enable();
+            } else {
+                // Disable autostart if user has opted out
+                let _ = autostart_manager.disable();
+            }
 
             // Window is configured to start hidden to avoid flicker.
             // If user didn't choose Start Hidden, show it now.
@@ -205,11 +212,13 @@ pub fn run() {
             shortcut::change_ptt_setting,
             shortcut::change_audio_feedback_setting,
             shortcut::change_start_hidden_setting,
+            shortcut::change_autostart_setting,
             shortcut::change_translate_to_english_setting,
             shortcut::change_selected_language_setting,
             shortcut::change_overlay_position_setting,
             shortcut::change_debug_mode_setting,
             shortcut::change_word_correction_threshold_setting,
+            shortcut::change_paste_method_setting,
             shortcut::update_custom_words,
             shortcut::suspend_binding,
             shortcut::resume_binding,
@@ -242,7 +251,8 @@ pub fn run() {
             commands::history::get_history_entries,
             commands::history::toggle_history_entry_saved,
             commands::history::get_audio_file_path,
-            commands::history::delete_history_entry
+            commands::history::delete_history_entry,
+            commands::history::update_history_limit
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,11 +1,12 @@
 use serde::Serialize;
 use tauri::{App, AppHandle, Emitter, Manager};
+use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 use tauri_plugin_global_shortcut::{Shortcut, ShortcutState};
 
 use crate::actions::ACTION_MAP;
 use crate::settings::ShortcutBinding;
-use crate::settings::{self, get_settings, OverlayPosition};
+use crate::settings::{self, get_settings, OverlayPosition, PasteMethod};
 use crate::ManagedToggleState;
 
 pub fn init_shortcuts(app: &App) {
@@ -192,6 +193,32 @@ pub fn change_start_hidden_setting(app: AppHandle, enabled: bool) -> Result<(), 
 }
 
 #[tauri::command]
+pub fn change_autostart_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.autostart_enabled = enabled;
+    settings::write_settings(&app, settings);
+
+    // Apply the autostart setting immediately
+    let autostart_manager = app.autolaunch();
+    if enabled {
+        let _ = autostart_manager.enable();
+    } else {
+        let _ = autostart_manager.disable();
+    }
+
+    // Notify frontend
+    let _ = app.emit(
+        "settings-changed",
+        serde_json::json!({
+            "setting": "autostart_enabled",
+            "value": enabled
+        }),
+    );
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn update_custom_words(app: AppHandle, words: Vec<String>) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.custom_words = words;
@@ -206,6 +233,22 @@ pub fn change_word_correction_threshold_setting(
 ) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.word_correction_threshold = threshold;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn change_paste_method_setting(app: AppHandle, method: String) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    let parsed = match method.as_str() {
+        "ctrl_v" => PasteMethod::CtrlV,
+        "direct" => PasteMethod::Direct,
+        other => {
+            eprintln!("Invalid paste method '{}', defaulting to ctrl_v", other);
+            PasteMethod::CtrlV
+        }
+    };
+    settings.paste_method = parsed;
     settings::write_settings(&app, settings);
     Ok(())
 }

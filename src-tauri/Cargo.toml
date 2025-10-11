@@ -1,6 +1,6 @@
 [package]
 name = "handy"
-version = "0.5.0"
+version = "0.5.2"
 description = "Handy"
 authors = ["cjpais"]
 edition = "2021"
@@ -47,7 +47,7 @@ hound = "3.5.1"
 env_logger = "0.11.6"
 log = "0.4.25"
 tokio = "1.43.0"
-vad-rs = { git = "https://github.com/cjpais/vad-rs" }
+vad-rs = { git = "https://github.com/cjpais/vad-rs", default-features = false }
 tauri-plugin-store = "2"
 tauri-plugin-os = "2"
 enigo = "0.5.0"
@@ -64,7 +64,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tar = "0.4.44"
 flate2 = "1.0"
-transcribe-rs = "0.1.0"
+transcribe-rs = "0.1.1"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"
