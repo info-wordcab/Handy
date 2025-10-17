@@ -10,6 +10,7 @@ mod shortcut;
 mod tray;
 mod utils;
 
+use managers::app_launcher::AppLauncherManager;
 use managers::audio::AudioRecordingManager;
 use managers::history::HistoryManager;
 use managers::model::ModelManager;
@@ -62,6 +63,14 @@ fn trigger_update_check(app: AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize X11 threading on Linux to prevent XCB threading errors
+    #[cfg(target_os = "linux")]
+    {
+        unsafe {
+            x11::xlib::XInitThreads();
+        }
+    }
+
     env_logger::init();
 
     tauri::Builder::default()
@@ -171,12 +180,16 @@ pub fn run() {
             );
             let history_manager =
                 Arc::new(HistoryManager::new(&app).expect("Failed to initialize history manager"));
+            let app_launcher_manager = Arc::new(
+                AppLauncherManager::new(&app).expect("Failed to initialize app launcher manager"),
+            );
 
             // Add managers to Tauri's managed state
             app.manage(recording_manager.clone());
             app.manage(model_manager.clone());
             app.manage(transcription_manager.clone());
             app.manage(history_manager.clone());
+            app.manage(app_launcher_manager.clone());
 
             // Create the recording overlay window (hidden by default)
             utils::create_recording_overlay(&app.handle());

@@ -85,6 +85,15 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
 
     match paste_method {
         PasteMethod::CtrlV => paste_via_clipboard(&text, &app_handle),
-        PasteMethod::Direct => paste_via_direct_input(&text),
+        PasteMethod::Direct => {
+            // Try direct input first, fall back to clipboard if it fails
+            match paste_via_direct_input(&text) {
+                Ok(()) => Ok(()),
+                Err(e) => {
+                    eprintln!("Direct paste failed ({}), falling back to clipboard method", e);
+                    paste_via_clipboard(&text, &app_handle)
+                }
+            }
+        }
     }
 }

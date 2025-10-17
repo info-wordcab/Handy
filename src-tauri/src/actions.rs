@@ -1,4 +1,5 @@
 use crate::audio_feedback::{play_recording_start_sound, play_recording_stop_sound};
+use crate::managers::app_launcher::AppLauncherManager;
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::history::HistoryManager;
 use crate::managers::transcription::TranscriptionManager;
@@ -6,7 +7,7 @@ use crate::overlay::{show_recording_overlay, show_transcribing_overlay};
 use crate::settings::get_settings;
 use crate::tray::{change_tray_icon, TrayIconState};
 use crate::utils;
-use log::{debug, error};
+use log::{debug, error, info};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -172,25 +173,144 @@ impl ShortcutAction for TranscribeAction {
     }
 }
 
-// Test Action
-struct TestAction;
+// Open App Action
+struct OpenAppAction;
 
-impl ShortcutAction for TestAction {
-    fn start(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str) {
-        println!(
-            "Shortcut ID '{}': Started - {} (App: {})", // Changed "Pressed" to "Started" for consistency
-            binding_id,
-            shortcut_str,
-            app.package_info().name
+impl ShortcutAction for OpenAppAction {
+    fn start(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
+        let start_time = Instant::now();
+        debug!("OpenAppAction::start called for binding: {}", binding_id);
+
+        // Load model in the background
+        let tm = app.state::<Arc<TranscriptionManager>>();
+        tm.initiate_model_load();
+
+        let binding_id = binding_id.to_string();
+        change_tray_icon(app, TrayIconState::Recording);
+        show_recording_overlay(app);
+
+        let rm = app.state::<Arc<AudioRecordingManager>>();
+
+        // Get the microphone mode to determine audio feedback timing
+        let settings = get_settings(app);
+        let is_always_on = settings.always_on_microphone;
+        debug!("Microphone mode - always_on: {}", is_always_on);
+
+        if is_always_on {
+            // Always-on mode: Play audio feedback immediately
+            debug!("Always-on mode: Playing audio feedback immediately");
+            play_recording_start_sound(app);
+            let recording_started = rm.try_start_recording(&binding_id);
+            debug!("Recording started: {}", recording_started);
+        } else {
+            // On-demand mode: Start recording first, then play audio feedback
+            debug!("On-demand mode: Starting recording first, then audio feedback");
+            let recording_start_time = Instant::now();
+            if rm.try_start_recording(&binding_id) {
+                debug!("Recording started in {:?}", recording_start_time.elapsed());
+                // Small delay to ensure microphone stream is active
+                let app_clone = app.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    debug!("Playing delayed audio feedback");
+                    play_recording_start_sound(&app_clone);
+                });
+            } else {
+                debug!("Failed to start recording");
+            }
+        }
+
+        debug!(
+            "OpenAppAction::start completed in {:?}",
+            start_time.elapsed()
         );
     }
 
-    fn stop(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str) {
-        println!(
-            "Shortcut ID '{}': Stopped - {} (App: {})", // Changed "Released" to "Stopped" for consistency
-            binding_id,
-            shortcut_str,
-            app.package_info().name
+    fn stop(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
+        let stop_time = Instant::now();
+        debug!("OpenAppAction::stop called for binding: {}", binding_id);
+
+        let ah = app.clone();
+        let rm = Arc::clone(&app.state::<Arc<AudioRecordingManager>>());
+        let tm = Arc::clone(&app.state::<Arc<TranscriptionManager>>());
+        let alm = Arc::clone(&app.state::<Arc<AppLauncherManager>>());
+
+        change_tray_icon(app, TrayIconState::Transcribing);
+        show_transcribing_overlay(app);
+
+        // Play audio feedback for recording stop
+        play_recording_stop_sound(app);
+
+        let binding_id = binding_id.to_string();
+
+        tauri::async_runtime::spawn(async move {
+            let binding_id = binding_id.clone();
+            debug!(
+                "Starting async app launch task for binding: {}",
+                binding_id
+            );
+
+            let stop_recording_time = Instant::now();
+            if let Some(samples) = rm.stop_recording(&binding_id) {
+                debug!(
+                    "Recording stopped and samples retrieved in {:?}, sample count: {}",
+                    stop_recording_time.elapsed(),
+                    samples.len()
+                );
+
+                let transcription_time = Instant::now();
+                match tm.transcribe(samples) {
+                    Ok(transcription) => {
+                        debug!(
+                            "Transcription completed in {:?}: '{}'",
+                            transcription_time.elapsed(),
+                            transcription
+                        );
+
+                        if !transcription.is_empty() {
+                            // Try to find and launch the app
+                            match alm.find_app(&transcription) {
+                                Some(app_info) => {
+                                    info!("Found app: {} for query '{}'", app_info.name, transcription);
+
+                                    // Launch the app
+                                    match alm.launch_app(&app_info) {
+                                        Ok(()) => {
+                                            info!("Successfully launched: {}", app_info.name);
+                                            // TODO: Show success overlay with app name
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to launch {}: {}", app_info.name, e);
+                                            // TODO: Show error overlay
+                                        }
+                                    }
+                                }
+                                None => {
+                                    info!("No app found for: '{}'", transcription);
+                                    // TODO: Show "app not found" overlay
+                                }
+                            }
+                        }
+
+                        utils::hide_recording_overlay(&ah);
+                        change_tray_icon(&ah, TrayIconState::Idle);
+                    }
+                    Err(err) => {
+                        error!("Transcription error: {}", err);
+                        utils::hide_recording_overlay(&ah);
+                        change_tray_icon(&ah, TrayIconState::Idle);
+                    }
+                }
+            } else {
+                debug!("No samples retrieved from recording stop");
+                utils::hide_recording_overlay(&ah);
+                change_tray_icon(&ah, TrayIconState::Idle);
+            }
+        });
+
+        debug!(
+            "OpenAppAction::stop completed in {:?}",
+            stop_time.elapsed()
         );
     }
 }
@@ -203,8 +323,8 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
         Arc::new(TranscribeAction) as Arc<dyn ShortcutAction>,
     );
     map.insert(
-        "test".to_string(),
-        Arc::new(TestAction) as Arc<dyn ShortcutAction>,
+        "open_app".to_string(),
+        Arc::new(OpenAppAction) as Arc<dyn ShortcutAction>,
     );
     map
 });

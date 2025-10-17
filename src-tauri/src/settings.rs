@@ -48,11 +48,8 @@ impl Default for ModelUnloadTimeout {
 
 impl Default for PasteMethod {
     fn default() -> Self {
-        // Default to CtrlV for macOS and Windows, Direct for Linux
-        #[cfg(target_os = "linux")]
-        return PasteMethod::Direct;
-        #[cfg(not(target_os = "linux"))]
-        return PasteMethod::CtrlV;
+        // Default to CtrlV for all platforms due to enigo reliability issues on Linux
+        PasteMethod::CtrlV
     }
 }
 
@@ -116,6 +113,8 @@ pub struct AppSettings {
     pub history_limit: usize,
     #[serde(default)]
     pub paste_method: PasteMethod,
+    #[serde(default)]
+    pub app_launcher_keywords: Vec<String>,
 }
 
 fn default_model() -> String {
@@ -181,6 +180,16 @@ pub fn get_default_settings() -> AppSettings {
             current_binding: default_shortcut.to_string(),
         },
     );
+    bindings.insert(
+        "open_app".to_string(),
+        ShortcutBinding {
+            id: "open_app".to_string(),
+            name: "Open Application".to_string(),
+            description: "Opens an application by voice command.".to_string(),
+            default_binding: "ctrl+shift+space".to_string(),
+            current_binding: "ctrl+shift+space".to_string(),
+        },
+    );
 
     AppSettings {
         bindings,
@@ -201,6 +210,7 @@ pub fn get_default_settings() -> AppSettings {
         word_correction_threshold: default_word_correction_threshold(),
         history_limit: default_history_limit(),
         paste_method: PasteMethod::default(),
+        app_launcher_keywords: Vec::new(),
     }
 }
 

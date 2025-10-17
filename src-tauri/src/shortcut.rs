@@ -15,7 +15,7 @@ pub fn init_shortcuts(app: &App) {
     // Register shortcuts with the bindings from settings
     for (_id, binding) in settings.bindings {
         // Pass app.handle() which is &AppHandle
-        if let Err(e) = _register_shortcut(app.handle(), binding) {
+        if let Err(e) = _register_shortcut(app.handle(), binding.clone()) {
             eprintln!("Failed to register shortcut {} during init: {}", _id, e);
         }
     }
@@ -366,8 +366,8 @@ fn _register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), S
                         }
                     }
                 } else {
-                    println!(
-                        "Warning: No action defined in ACTION_MAP for shortcut ID '{}'. Shortcut: '{}', State: {:?}",
+                    log::warn!(
+                        "No action defined in ACTION_MAP for shortcut ID '{}'. Shortcut: '{}', State: {:?}",
                         binding_id_for_closure, shortcut_string, event.state
                     );
                 }

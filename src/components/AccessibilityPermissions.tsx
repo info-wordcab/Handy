@@ -1,8 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  checkAccessibilityPermissions,
-  requestAccessibilityPermissions,
-} from "tauri-plugin-macos-permissions-api";
+import { platform } from "@tauri-apps/plugin-os";
 
 // Define permission state type
 type PermissionState = "request" | "verify" | "granted";
@@ -14,12 +11,17 @@ interface ButtonConfig {
 }
 
 const AccessibilityPermissions: React.FC = () => {
+  const [currentPlatform, setCurrentPlatform] = useState<string | null>(null);
   const [hasAccessibility, setHasAccessibility] = useState<boolean>(false);
   const [permissionState, setPermissionState] =
     useState<PermissionState>("request");
 
   // Check permissions without requesting
   const checkPermissions = async (): Promise<boolean> => {
+    // Dynamically import macOS-specific API
+    const { checkAccessibilityPermissions } = await import(
+      "tauri-plugin-macos-permissions-api"
+    );
     const hasPermissions: boolean = await checkAccessibilityPermissions();
     setHasAccessibility(hasPermissions);
     setPermissionState(hasPermissions ? "granted" : "verify");
@@ -30,6 +32,10 @@ const AccessibilityPermissions: React.FC = () => {
   const handleButtonClick = async (): Promise<void> => {
     if (permissionState === "request") {
       try {
+        // Dynamically import macOS-specific API
+        const { requestAccessibilityPermissions } = await import(
+          "tauri-plugin-macos-permissions-api"
+        );
         await requestAccessibilityPermissions();
         // After system prompt, transition to verification state
         setPermissionState("verify");
@@ -43,16 +49,31 @@ const AccessibilityPermissions: React.FC = () => {
     }
   };
 
-  // On app boot - check permissions
+  // On app boot - check platform and permissions
   useEffect(() => {
     const initialSetup = async (): Promise<void> => {
-      const hasPermissions: boolean = await checkAccessibilityPermissions();
-      setHasAccessibility(hasPermissions);
-      setPermissionState(hasPermissions ? "granted" : "request");
+      const currentPlatform = await platform();
+      setCurrentPlatform(currentPlatform);
+
+      // Only check permissions on macOS
+      if (currentPlatform === "macos") {
+        // Dynamically import macOS-specific API
+        const { checkAccessibilityPermissions } = await import(
+          "tauri-plugin-macos-permissions-api"
+        );
+        const hasPermissions: boolean = await checkAccessibilityPermissions();
+        setHasAccessibility(hasPermissions);
+        setPermissionState(hasPermissions ? "granted" : "request");
+      }
     };
 
     initialSetup();
   }, []);
+
+  // Don't render on non-macOS platforms
+  if (currentPlatform !== "macos") {
+    return null;
+  }
 
   if (hasAccessibility) {
     return null;
