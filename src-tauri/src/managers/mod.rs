@@ -1,3 +1,4 @@
+pub mod app_launcher;
 pub mod audio;
 pub mod history;
 pub mod model;

@@ -237,6 +237,16 @@ pub fn get_default_settings() -> AppSettings {
             current_binding: default_shortcut.to_string(),
         },
     );
+    bindings.insert(
+        "open_app".to_string(),
+        ShortcutBinding {
+            id: "open_app".to_string(),
+            name: "Open Application".to_string(),
+            description: "Opens an application by voice command.".to_string(),
+            default_binding: "ctrl+shift+space".to_string(),
+            current_binding: "ctrl+shift+space".to_string(),
+        },
+    );
 
     AppSettings {
         bindings,
