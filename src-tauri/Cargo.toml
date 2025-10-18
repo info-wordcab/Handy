@@ -1,6 +1,6 @@
 [package]
 name = "handy"
-version = "0.5.2"
+version = "0.5.4"
 description = "Handy"
 authors = ["cjpais"]
 edition = "2021"
@@ -64,10 +64,16 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tar = "0.4.44"
 flate2 = "1.0"
-transcribe-rs = "0.1.1"
+transcribe-rs = "0.1.4"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2.3.2"
 tauri-plugin-updater = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

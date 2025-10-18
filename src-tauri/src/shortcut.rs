@@ -1,21 +1,19 @@
 use serde::Serialize;
-use tauri::{App, AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_autostart::ManagerExt;
-use tauri_plugin_global_shortcut::GlobalShortcutExt;
-use tauri_plugin_global_shortcut::{Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use crate::actions::ACTION_MAP;
 use crate::settings::ShortcutBinding;
-use crate::settings::{self, get_settings, OverlayPosition, PasteMethod};
+use crate::settings::{self, get_settings, ClipboardHandling, OverlayPosition, PasteMethod, SoundTheme};
 use crate::ManagedToggleState;
 
-pub fn init_shortcuts(app: &App) {
+pub fn init_shortcuts(app: &AppHandle) {
     let settings = settings::load_or_create_app_settings(app);
 
     // Register shortcuts with the bindings from settings
     for (_id, binding) in settings.bindings {
-        // Pass app.handle() which is &AppHandle
-        if let Err(e) = _register_shortcut(app.handle(), binding) {
+        if let Err(e) = _register_shortcut(app, binding) {
             eprintln!("Failed to register shortcut {} during init: {}", _id, e);
         }
     }
@@ -115,6 +113,31 @@ pub fn change_ptt_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
 pub fn change_audio_feedback_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.audio_feedback = enabled;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn change_audio_feedback_volume_setting(app: AppHandle, volume: f32) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.audio_feedback_volume = volume;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn change_sound_theme_setting(app: AppHandle, theme: String) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    let parsed = match theme.as_str() {
+        "marimba" => SoundTheme::Marimba,
+        "pop" => SoundTheme::Pop,
+        "custom" => SoundTheme::Custom,
+        other => {
+            eprintln!("Invalid sound theme '{}', defaulting to marimba", other);
+            SoundTheme::Marimba
+        }
+    };
+    settings.sound_theme = parsed;
     settings::write_settings(&app, settings);
     Ok(())
 }
@@ -249,6 +272,22 @@ pub fn change_paste_method_setting(app: AppHandle, method: String) -> Result<(),
         }
     };
     settings.paste_method = parsed;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn change_clipboard_handling_setting(app: AppHandle, handling: String) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    let parsed = match handling.as_str() {
+        "dont_modify" => ClipboardHandling::DontModify,
+        "copy_to_clipboard" => ClipboardHandling::CopyToClipboard,
+        other => {
+            eprintln!("Invalid clipboard handling '{}', defaulting to dont_modify", other);
+            ClipboardHandling::DontModify
+        }
+    };
+    settings.clipboard_handling = parsed;
     settings::write_settings(&app, settings);
     Ok(())
 }

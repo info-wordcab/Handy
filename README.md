@@ -59,6 +59,12 @@ Handy is built as a Tauri application combining:
   - `rdev`: Global keyboard shortcuts and system events
   - `rubato`: Audio resampling
 
+### Debug Mode
+
+Handy includes an advanced debug mode for development and troubleshooting. Access it by pressing:
+- **macOS**: `Cmd+Shift+D`
+- **Windows/Linux**: `Ctrl+Shift+D`
+
 ## Known Issues & Current Limitations
 
 This project is actively being developed and has some [known issues](https://github.com/cjpais/Handy/issues). We believe in transparency about the current state:
